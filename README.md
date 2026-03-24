@@ -131,6 +131,36 @@ Production build validation succeeds with:
 npm run build
 ```
 
+## Railway Deployment
+
+This repository now includes a Dockerfile for Railway.
+
+Runtime behavior inside Railway:
+
+- If `WEBAUTHN_ORIGIN` is not set, the container derives it from `RAILWAY_PUBLIC_DOMAIN`.
+- If `WEBAUTHN_RP_ID` is not set, the container derives it from `RAILWAY_PUBLIC_DOMAIN`.
+- If `SQLITE_DATA_DIR` is not set and a Railway volume is mounted, the container uses `RAILWAY_VOLUME_MOUNT_PATH`.
+
+Recommended Railway environment variables:
+
+- `WEBAUTHN_RP_ID`
+- `WEBAUTHN_ORIGIN`
+- `WEBAUTHN_REQUIRE_USER_VERIFICATION`
+- `SESSION_COOKIE_NAME`
+- `NEWSCLAW_KEY_ENCRYPTION_SECRET`
+- `CLAWMACDO_SNAPSHOT_NAME`
+- `CLAWMACDO_INSTANCE_SIZE`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+
+Container notes:
+
+- The container listens on Railway's `PORT` value and binds to `0.0.0.0`.
+- SQLite defaults to `/app/data` inside the container.
+- For persistent SQLite storage on Railway, mount a volume and point `SQLITE_DATA_DIR` at that mounted path.
+- The WebAuthn values can be set explicitly, but Railway domain fallbacks are now handled automatically at container startup.
+
 Decrypt an encrypted restore-job private key for manual inspection:
 
 ```bash
