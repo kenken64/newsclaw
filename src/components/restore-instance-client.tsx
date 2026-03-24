@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { CheckCircle2, LoaderCircle, ServerCog } from "lucide-react";
+import { CheckCircle2, LoaderCircle, ServerCog, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,14 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
   const router = useRouter();
   const [restoreJob, setRestoreJob] = useState<RestoreJob | null>(initialRestoreJob);
   const [busy, setBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const startedRef = useRef(Boolean(initialRestoreJob && initialRestoreJob.status !== "failed"));
+  const startedRef = useRef(
+    Boolean(initialRestoreJob && ["pending", "running", "completed"].includes(initialRestoreJob.status))
+  );
+  const handoffStartedRef = useRef(false);
+  const hasActiveRestore = Boolean(restoreJob && ["pending", "running"].includes(restoreJob.status));
+  const restoreFailureMessage = restoreJob?.status === "failed" ? restoreJob.errorMessage : null;
 
   async function startRestore() {
     startedRef.current = true;
@@ -53,6 +59,73 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
     }
   }
 
+  async function cancelRestore() {
+    const confirmed = window.confirm(
+      "Cancel the current restore and return to the setup page? The active OpenClaw workspace restore will be stopped.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCancelBusy(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/provision/restore", { method: "DELETE" });
+      const payload = (await response.json()) as { error?: string; restoreJob?: RestoreJob };
+
+      if (!response.ok) {
+        if (payload.error === "There is no active restore to cancel.") {
+          goBackToSetup();
+          return;
+        }
+
+        throw new Error(payload.error ?? "Unable to cancel the workspace restore.");
+      }
+
+      setRestoreJob(payload.restoreJob ?? null);
+      startedRef.current = false;
+      router.push("/setup-agent?edit=1");
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to cancel the workspace restore.");
+    } finally {
+      setCancelBusy(false);
+    }
+  }
+
+  function goBackToSetup() {
+    router.push("/setup-agent?edit=1");
+    router.refresh();
+  }
+
+  async function handleBackToSetup() {
+    if (hasActiveRestore) {
+      await cancelRestore();
+      return;
+    }
+
+    goBackToSetup();
+  }
+
+  async function startPostRestorePairing() {
+    if (handoffStartedRef.current) {
+      return;
+    }
+
+    handoffStartedRef.current = true;
+
+    try {
+      await fetch("/api/provision/pairing", { method: "POST" });
+    } catch {
+      // The pairing screen can recover and retry if this eager handoff fails.
+    } finally {
+      router.push("/pair-channel");
+      router.refresh();
+    }
+  }
+
   useEffect(() => {
     if (missingConfig.length > 0) {
       return;
@@ -70,7 +143,7 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
   }, [missingConfig]);
 
   useEffect(() => {
-    if (!restoreJob || restoreJob.status === "completed") {
+    if (!restoreJob || ["completed", "canceled", "failed"].includes(restoreJob.status)) {
       return;
     }
 
@@ -83,8 +156,7 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
 
         if (payload.restoreJob.status === "completed") {
           window.clearInterval(interval);
-          router.push("/pair-channel");
-          router.refresh();
+          void startPostRestorePairing();
         }
       }
     }, 2000);
@@ -114,6 +186,19 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
             </div>
           ) : null}
 
+          {restoreFailureMessage ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {restoreFailureMessage}
+            </div>
+          ) : null}
+
+          <div className="flex justify-start">
+            <Button onClick={() => void handleBackToSetup()} disabled={busy || cancelBusy} variant="outline" className="w-fit rounded-2xl">
+              {cancelBusy ? <LoaderCircle className="animate-spin" /> : null}
+              {hasActiveRestore ? "Cancel and return to setup" : "Back to setup"}
+            </Button>
+          </div>
+
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -123,7 +208,7 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
               {restoreJob?.status === "completed" ? (
                 <CheckCircle2 className="size-8 text-emerald-600" />
               ) : (
-                <LoaderCircle className={`size-8 text-[color:var(--brand-ink)] ${busy || restoreJob ? "animate-spin" : ""}`} />
+                <LoaderCircle className={`size-8 text-[color:var(--brand-ink)] ${busy || hasActiveRestore ? "animate-spin" : ""}`} />
               )}
             </div>
             <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
@@ -143,6 +228,24 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
             <Button onClick={() => void startRestore()} disabled={busy} className="w-fit rounded-2xl bg-[color:var(--brand-ink)] text-white hover:bg-[color:var(--brand-ink-strong)]">
               Retry restore
             </Button>
+          ) : null}
+
+          {hasActiveRestore ? (
+            <div className="grid gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-5">
+              <div className="flex items-start gap-3 text-amber-900">
+                <TriangleAlert className="mt-0.5 size-5 shrink-0" />
+                <div>
+                  <p className="font-medium">Canceling will stop the current restore.</p>
+                  <p className="mt-1 text-sm leading-6 text-amber-800">
+                    If you continue, NewsClaw will cancel the active restore job and send you back to the setup page.
+                  </p>
+                </div>
+              </div>
+              <Button onClick={() => void cancelRestore()} disabled={busy || cancelBusy} variant="outline" className="w-fit rounded-2xl border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
+                {cancelBusy ? <LoaderCircle className="animate-spin" /> : <TriangleAlert />}
+                Cancel restore and return to setup
+              </Button>
+            </div>
           ) : null}
         </CardContent>
       </Card>

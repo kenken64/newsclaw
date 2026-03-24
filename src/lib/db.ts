@@ -77,6 +77,7 @@ type RestoreJobRow = {
   hostname: string | null;
   ip_address: string | null;
   ssh_key_path: string | null;
+  worker_pid: number | null;
   ssh_private_key_encrypted: string | null;
   raw_output: string | null;
   error_message: string | null;
@@ -180,6 +181,7 @@ export type RestoreJobRecord = {
   hostname: string | null;
   ipAddress: string | null;
   sshKeyPath: string | null;
+  workerPid: number | null;
   sshPrivateKeyEncrypted: string | null;
   rawOutput: string;
   errorMessage: string | null;
@@ -309,6 +311,7 @@ function mapRestoreJob(row: RestoreJobRow): RestoreJobRecord {
     hostname: row.hostname,
     ipAddress: row.ip_address,
     sshKeyPath: row.ssh_key_path,
+    workerPid: row.worker_pid,
     sshPrivateKeyEncrypted: row.ssh_private_key_encrypted,
     rawOutput: row.raw_output ?? "",
     errorMessage: row.error_message,
@@ -438,6 +441,7 @@ function initDatabase(database: Database.Database) {
       hostname TEXT,
       ip_address TEXT,
       ssh_key_path TEXT,
+      worker_pid INTEGER,
       ssh_private_key_encrypted TEXT,
       raw_output TEXT,
       error_message TEXT,
@@ -492,6 +496,7 @@ function initDatabase(database: Database.Database) {
   `);
 
   ensureColumn(database, "restore_jobs", "ssh_private_key_encrypted", "TEXT");
+  ensureColumn(database, "restore_jobs", "worker_pid", "INTEGER");
 }
 
 function ensureColumn(database: Database.Database, tableName: string, columnName: string, definition: string) {
@@ -790,6 +795,7 @@ export function createRestoreJob(input: {
     hostname: null,
     ipAddress: null,
     sshKeyPath: null,
+    workerPid: null,
     sshPrivateKeyEncrypted: null,
     rawOutput: "",
     errorMessage: null,
@@ -801,8 +807,8 @@ export function createRestoreJob(input: {
   db.prepare(
     `INSERT INTO restore_jobs (
       id, user_id, provider, snapshot_name, region, size, status, current_step, total_steps, step_label,
-      deploy_id, hostname, ip_address, ssh_key_path, ssh_private_key_encrypted, raw_output, error_message, started_at, updated_at, completed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      deploy_id, hostname, ip_address, ssh_key_path, worker_pid, ssh_private_key_encrypted, raw_output, error_message, started_at, updated_at, completed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     record.id,
     record.userId,
@@ -818,6 +824,7 @@ export function createRestoreJob(input: {
     record.hostname,
     record.ipAddress,
     record.sshKeyPath,
+    record.workerPid,
     record.sshPrivateKeyEncrypted,
     record.rawOutput,
     record.errorMessage,
@@ -862,6 +869,7 @@ export function updateRestoreJob(id: string, input: {
   hostname?: string | null;
   ipAddress?: string | null;
   sshKeyPath?: string | null;
+  workerPid?: number | null;
   sshPrivateKeyEncrypted?: string | null;
   errorMessage?: string | null;
   completedAt?: string | null;
@@ -875,7 +883,7 @@ export function updateRestoreJob(id: string, input: {
   db.prepare(
     `UPDATE restore_jobs
      SET status = ?, current_step = ?, total_steps = ?, step_label = ?, deploy_id = ?, hostname = ?,
-       ip_address = ?, ssh_key_path = ?, ssh_private_key_encrypted = ?, error_message = ?, completed_at = ?, updated_at = ?
+       ip_address = ?, ssh_key_path = ?, worker_pid = ?, ssh_private_key_encrypted = ?, error_message = ?, completed_at = ?, updated_at = ?
      WHERE id = ?`
   ).run(
     input.status ?? existing.status,
@@ -886,6 +894,7 @@ export function updateRestoreJob(id: string, input: {
     input.hostname === undefined ? existing.hostname : input.hostname,
     input.ipAddress === undefined ? existing.ipAddress : input.ipAddress,
     input.sshKeyPath === undefined ? existing.sshKeyPath : input.sshKeyPath,
+    input.workerPid === undefined ? existing.workerPid : input.workerPid,
     input.sshPrivateKeyEncrypted === undefined ? existing.sshPrivateKeyEncrypted : input.sshPrivateKeyEncrypted,
     input.errorMessage === undefined ? existing.errorMessage : input.errorMessage,
     input.completedAt === undefined ? existing.completedAt : input.completedAt,

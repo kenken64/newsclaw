@@ -2,7 +2,7 @@
 
 import { startTransition, useState } from "react";
 
-import { ArrowLeft, Bot, Eye, EyeOff, LoaderCircle, LogOut, Radar, Sparkles, X } from "lucide-react";
+import { Bot, Eye, EyeOff, LoaderCircle, LogOut, Radar, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -202,15 +202,6 @@ export function OpenClawAgentForm({
     setExitBusy(true);
 
     try {
-      if (isEditMode) {
-        startTransition(() => {
-          router.push("/dashboard");
-          router.refresh();
-        });
-
-        return;
-      }
-
       await fetch("/api/auth/logout", {
         method: "POST",
       });
@@ -460,8 +451,8 @@ export function OpenClawAgentForm({
                 onClick={handleExit}
                 disabled={busy || exitBusy}
               >
-                {exitBusy ? <LoaderCircle className="animate-spin" /> : isEditMode ? <ArrowLeft /> : <LogOut />}
-                {isEditMode ? "Cancel and return to dashboard" : "Log out to main page"}
+                {exitBusy ? <LoaderCircle className="animate-spin" /> : <LogOut />}
+                {isEditMode ? "Log out and return home" : "Log out to main page"}
               </Button>
               <Button
                 size="lg"

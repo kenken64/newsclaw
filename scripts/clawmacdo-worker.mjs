@@ -25,6 +25,70 @@ if (!encryptionSecret?.trim()) {
 fs.mkdirSync(path.dirname(databaseFile), { recursive: true });
 
 const db = new Database(databaseFile);
+let activeCommandChild = null;
+let shuttingDown = false;
+
+function getClawmacdoSpawnOptions(commandArgs) {
+  if (process.platform === "win32" && /\.cmd$/i.test(clawmacdoBin)) {
+    const commandLine = [quoteWindowsArgument(clawmacdoBin), ...commandArgs.map(quoteWindowsArgument)].join(" ");
+
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", commandLine],
+    };
+  }
+
+  return {
+    command: clawmacdoBin,
+    args: commandArgs,
+  };
+}
+
+function quoteWindowsArgument(value) {
+  if (value.length === 0) {
+    return '""';
+  }
+
+  if (!/[\s"]/u.test(value)) {
+    return value;
+  }
+
+  let quoted = '"';
+  let backslashCount = 0;
+
+  for (const character of value) {
+    if (character === "\\") {
+      backslashCount += 1;
+      continue;
+    }
+
+    if (character === '"') {
+      quoted += "\\".repeat(backslashCount * 2 + 1);
+      quoted += character;
+      backslashCount = 0;
+      continue;
+    }
+
+    if (backslashCount > 0) {
+      quoted += "\\".repeat(backslashCount);
+      backslashCount = 0;
+    }
+
+    quoted += character;
+  }
+
+  if (backslashCount > 0) {
+    quoted += "\\".repeat(backslashCount * 2);
+  }
+
+  quoted += '"';
+  return quoted;
+}
+
+function isRestoreCanceled(jobId) {
+  const row = db.prepare("SELECT status FROM restore_jobs WHERE id = ?").get(jobId);
+  return row?.status === "canceled";
+}
 
 function now() {
   return new Date().toISOString();
@@ -46,7 +110,7 @@ function updateRestoreJob(jobId, input) {
   db.prepare(
     `UPDATE restore_jobs
      SET status = ?, current_step = ?, total_steps = ?, step_label = ?, deploy_id = ?, hostname = ?, ip_address = ?,
-         ssh_key_path = ?, ssh_private_key_encrypted = ?, error_message = ?, completed_at = ?, updated_at = ?
+       ssh_key_path = ?, worker_pid = ?, ssh_private_key_encrypted = ?, error_message = ?, completed_at = ?, updated_at = ?
      WHERE id = ?`,
   ).run(
     input.status ?? current.status,
@@ -57,6 +121,7 @@ function updateRestoreJob(jobId, input) {
     input.hostname === undefined ? current.hostname : input.hostname,
     input.ip_address === undefined ? current.ip_address : input.ip_address,
     input.ssh_key_path === undefined ? current.ssh_key_path : input.ssh_key_path,
+    input.worker_pid === undefined ? current.worker_pid : input.worker_pid,
     input.ssh_private_key_encrypted === undefined ? current.ssh_private_key_encrypted : input.ssh_private_key_encrypted,
     input.error_message === undefined ? current.error_message : input.error_message,
     input.completed_at === undefined ? current.completed_at : input.completed_at,
@@ -111,13 +176,24 @@ function upsertMessagingPairing(input) {
 
 function runCommand(commandArgs, handlers) {
   return new Promise((resolve, reject) => {
-    const child = spawn(clawmacdoBin, commandArgs, {
+    const spawnOptions = getClawmacdoSpawnOptions(commandArgs);
+
+    const child = spawn(spawnOptions.command, spawnOptions.args, {
       cwd: workspaceRoot,
       windowsHide: true,
       env: {
         ...process.env,
       },
     });
+
+    activeCommandChild = child;
+    const cancelWatcher = payload.mode === "restore"
+      ? setInterval(() => {
+          if (isRestoreCanceled(payload.jobId) && activeCommandChild && !activeCommandChild.killed) {
+            activeCommandChild.kill("SIGTERM");
+          }
+        }, 1000)
+      : null;
 
     let stdout = "";
     let stderr = "";
@@ -151,6 +227,12 @@ function runCommand(commandArgs, handlers) {
 
     child.on("error", reject);
     child.on("close", (code) => {
+      activeCommandChild = null;
+
+      if (cancelWatcher) {
+        clearInterval(cancelWatcher);
+      }
+
       if (stdoutBuffer) {
         handlers.onStdoutLine(stdoutBuffer);
       }
@@ -173,7 +255,7 @@ async function runRestore() {
     ssh_private_key_encrypted: null,
   };
 
-  updateRestoreJob(payload.jobId, { status: "running", error_message: null });
+  updateRestoreJob(payload.jobId, { status: "running", error_message: null, worker_pid: process.pid });
 
   const commandArgs = [
     "ls-restore",
@@ -200,22 +282,22 @@ async function runRestore() {
         });
       }
 
-      const deployIdMatch = line.match(/^Deploy ID:\s+(.+)$/);
+      const deployIdMatch = line.match(/^\s*Deploy ID:\s+(.+)$/);
       if (deployIdMatch) {
         metadata.deploy_id = deployIdMatch[1].trim();
       }
 
-      const hostnameMatch = line.match(/^Hostname:\s+(.+)$/);
+      const hostnameMatch = line.match(/^\s*Hostname:\s+(.+)$/);
       if (hostnameMatch) {
         metadata.hostname = hostnameMatch[1].trim();
       }
 
-      const ipMatch = line.match(/^IP Address:\s+(.+)$/);
+      const ipMatch = line.match(/^\s*IP Address:\s+(.+)$/);
       if (ipMatch) {
         metadata.ip_address = ipMatch[1].trim();
       }
 
-      const sshKeyMatch = line.match(/^SSH Key:\s+(.+)$/);
+      const sshKeyMatch = line.match(/^\s*SSH Key:\s+(.+)$/);
       if (sshKeyMatch) {
         metadata.ssh_key_path = sshKeyMatch[1].trim();
       }
@@ -226,8 +308,16 @@ async function runRestore() {
   });
 
   if (result.code !== 0) {
+    const current = db.prepare("SELECT status FROM restore_jobs WHERE id = ?").get(payload.jobId);
+
+    if (current?.status === "canceled") {
+      return;
+    }
+
     updateRestoreJob(payload.jobId, {
       status: "failed",
+      step_label: "Restore failed",
+      worker_pid: null,
       error_message: (result.stderr || result.stdout || "Restore failed.").trim(),
       completed_at: now(),
     });
@@ -248,11 +338,38 @@ async function runRestore() {
     hostname: metadata.hostname,
     ip_address: metadata.ip_address,
     ssh_key_path: metadata.ssh_key_path,
+    worker_pid: null,
     ssh_private_key_encrypted: metadata.ssh_private_key_encrypted,
     error_message: null,
     completed_at: now(),
   });
 }
+
+function cancelRestoreFromSignal() {
+  if (payload.mode !== "restore" || shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+
+  if (activeCommandChild && !activeCommandChild.killed) {
+    activeCommandChild.kill("SIGTERM");
+  }
+
+  appendRestoreOutput(payload.jobId, "[cancel] Restore canceled by user.\n");
+  updateRestoreJob(payload.jobId, {
+    status: "canceled",
+    step_label: "Restore canceled",
+    worker_pid: null,
+    error_message: null,
+    completed_at: now(),
+  });
+
+  process.exit(0);
+}
+
+process.on("SIGTERM", cancelRestoreFromSignal);
+process.on("SIGINT", cancelRestoreFromSignal);
 
 async function runMessagingSetup(mode) {
   const pairingStatus = mode === "telegram-setup" ? "awaiting_code" : "fetching_qr";
@@ -318,6 +435,8 @@ try {
   if (payload.mode === "restore") {
     updateRestoreJob(payload.jobId, {
       status: "failed",
+      step_label: "Restore failed",
+      worker_pid: null,
       error_message: message,
       completed_at: now(),
     });

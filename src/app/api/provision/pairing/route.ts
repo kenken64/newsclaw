@@ -8,6 +8,7 @@ import {
 } from "@/lib/db";
 import { decryptSecretValue } from "@/lib/secrets";
 import {
+  getRestoreInstanceIdentifier,
   getPairingReadiness,
   serializeMessagingPairing,
   serializeRestoreJob,
@@ -59,6 +60,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Missing pairing configuration: ${missingConfig.join(", ")}.` }, { status: 400 });
   }
 
+  const instanceIdentifier = getRestoreInstanceIdentifier(restoreJob);
+
+  if (!instanceIdentifier) {
+    return NextResponse.json({ error: "No deployment identifier is available for pairing." }, { status: 400 });
+  }
+
   const pairing = getMessagingPairingByUserId(user.id);
 
   if (pairing && ["fetching_qr", "awaiting_code", "qr_ready", "completed"].includes(pairing.status)) {
@@ -81,7 +88,7 @@ export async function POST(request: Request) {
       mode: "telegram-setup",
       restoreJobId: restoreJob.id,
       userId: user.id,
-      instance: restoreJob.deployId ?? restoreJob.hostname ?? restoreJob.ipAddress ?? "",
+      instance: instanceIdentifier,
       channel: "telegram",
       telegramBotToken: decryptSecretValue(channelConfig.telegramBotTokenEncrypted!),
     });
@@ -90,7 +97,7 @@ export async function POST(request: Request) {
       mode: "whatsapp-setup",
       restoreJobId: restoreJob.id,
       userId: user.id,
-      instance: restoreJob.deployId ?? restoreJob.hostname ?? restoreJob.ipAddress ?? "",
+      instance: instanceIdentifier,
       channel: "whatsapp",
       phoneNumber: channelConfig.whatsappPhoneNumber ?? "",
     });

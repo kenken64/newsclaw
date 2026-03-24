@@ -7,7 +7,7 @@ import {
   getUserChannelConfigByUserId,
   upsertMessagingPairing,
 } from "@/lib/db";
-import { runClawmacdoCommand, serializeMessagingPairing } from "@/lib/provisioning";
+import { getRestoreInstanceIdentifier, runClawmacdoCommand, serializeMessagingPairing } from "@/lib/provisioning";
 import { getCurrentUserFromRequest } from "@/lib/session";
 
 const requestSchema = z.object({
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
   try {
     const body = requestSchema.parse(await request.json());
-    const instance = restoreJob.deployId ?? restoreJob.hostname ?? restoreJob.ipAddress;
+    const instance = getRestoreInstanceIdentifier(restoreJob);
 
     if (!instance) {
       return NextResponse.json({ error: "No deployment identifier is available for Telegram pairing." }, { status: 400 });
