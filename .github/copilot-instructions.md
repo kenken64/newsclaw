@@ -1,22 +1,28 @@
-<!-- Use this file to provide workspace-specific custom instructions to Copilot. For more details, visit https://code.visualstudio.com/docs/copilot/copilot-customization#_use-a-githubcopilotinstructionsmd-file -->
 - [x] Verify that the copilot-instructions.md file in the .github directory is created.
 
 - [x] Clarify Project Requirements
 	- Latest Next.js app in the current folder, using TypeScript, App Router, Tailwind CSS, ESLint, npm, SQLite, passkey authentication, first-login OpenClaw agent setup, and a dashboard with news category selection.
 
-- [ ] Scaffold the Project
+- [x] Scaffold the Project
+	- Created a latest Next.js 16 application in the current folder with TypeScript, App Router, Tailwind CSS, ESLint, npm, and Turbopack.
 
-- [ ] Customize the Project
+- [x] Customize the Project
+	- Implemented SQLite persistence, passkey authentication, first-login OpenClaw agent setup, and a category-based dashboard with shadcn/ui styling.
 
-- [ ] Install Required Extensions
+- [x] Install Required Extensions
+	- No extensions were required by the project setup guidance.
 
-- [ ] Compile the Project
+- [x] Compile the Project
+	- Verified with a successful `npm run build` production build.
 
-- [ ] Create and Run Task
+- [x] Create and Run Task
+	- Created and started the `newsclaw: dev` VS Code task running `npm run dev`.
 
 - [ ] Launch the Project
+	- Dev server is running through the VS Code task. A dedicated debug launch configuration was not requested.
 
-- [ ] Ensure Documentation is Complete
+- [x] Ensure Documentation is Complete
+	- Updated `README.md` and kept this checklist aligned with the implemented project state.
 
 - Work through each checklist item systematically.
 - Keep communication concise and focused.

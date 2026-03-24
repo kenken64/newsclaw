@@ -1,18 +1,20 @@
 {
-  "name": "newsclaw-temp",
+  "name": "newsclaw",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "decrypt-restore-key": "node scripts/decrypt-restore-key.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.0",
     "better-sqlite3": "^12.8.0",
     "class-variance-authority": "^0.7.1",
+    "clawmacdo": "^0.40.1",
     "clsx": "^2.1.1",
     "jose": "^6.2.2",
     "lucide-react": "^1.0.1",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NewsClaw
 
-## Getting Started
+NewsClaw is a Next.js 16 web application for passkey-secured news monitoring. A user signs in with WebAuthn passkeys, completes a first-login OpenClaw agent setup, and then lands on a professional dashboard to choose the news categories that should drive their workspace.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 with App Router and TypeScript
+- Tailwind CSS v4 and shadcn/ui
+- SQLite with `better-sqlite3`
+- Native WebAuthn passkeys with `@simplewebauthn/server` and `@simplewebauthn/browser`
+- Local session persistence with HTTP-only cookies and SQLite-backed session records
+
+## Features
+
+- Passkey-first authentication with account creation and sign-in flows
+- First-login gate that requires OpenClaw agent setup before dashboard access
+- AWS Lightsail snapshot restore orchestrated through the local `clawmacdo` CLI
+- Per-user messaging channel choice for WhatsApp QR pairing or Telegram bot challenge pairing
+- SQLite persistence for users, passkeys, sessions, agent configuration, and category preferences
+- Dashboard experience for selecting preferred news categories
+- Tailwind + shadcn styling with a polished editorial UI
+
+## Environment
+
+Create a `.env` file from `.env.example`.
+
+```bash
+SQLITE_DATA_DIR=./data
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_ORIGIN=http://localhost:3000
+WEBAUTHN_REQUIRE_USER_VERIFICATION=false
+SESSION_COOKIE_NAME=newsclaw_session
+NEWSCLAW_KEY_ENCRYPTION_SECRET=change-this-to-a-long-random-secret
+CLAWMACDO_SNAPSHOT_NAME=openclaw-6ce6169b-10007-prod
+CLAWMACDO_INSTANCE_SIZE=s-2vcpu-4gb
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=ap-southeast-1
+```
+
+Set `WEBAUTHN_REQUIRE_USER_VERIFICATION=true` only if you want to force biometric/PIN verification on every authenticator and your test devices support it consistently.
+
+## Local Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Authentication Flow
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. New users create an account with name, email, and a passkey.
+2. After the passkey is registered, NewsClaw checks whether an OpenClaw agent exists.
+3. If no agent exists, the user is redirected to `/setup-agent`.
+4. Setup now captures the user-specific channel choice: WhatsApp or Telegram.
+5. NewsClaw restores the pinned Lightsail snapshot through `clawmacdo ls-restore`.
+6. After restore, the user completes WhatsApp QR pairing or Telegram challenge pairing.
+7. Once pairing is complete, the user lands on `/dashboard`.
 
-## Learn More
+## SQLite Storage
 
-To learn more about Next.js, take a look at the following resources:
+The app creates `newsclaw.db` inside the directory configured by `SQLITE_DATA_DIR`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Examples:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `SQLITE_DATA_DIR=./data`
+- `SQLITE_DATA_DIR=./storage/sqlite`
 
-## Deploy on Vercel
+If `SQLITE_DATA_DIR` is not set, the app falls back to `./data`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Stored entities:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `users`
+- `passkeys`
+- `sessions`
+- `openclaw_agents`
+- `category_preferences`
+- `restore_jobs`
+- `user_channel_configs`
+- `messaging_pairings`
+
+## Passkey Testing Notes
+
+- Use a browser with WebAuthn support.
+- Chrome DevTools includes a WebAuthn emulator if you want to test passkeys without a physical authenticator.
+- For local development, the relying party ID defaults to `localhost`.
+
+## Build Validation
+
+Production build validation succeeds with:
+
+```bash
+npm run build
+```
+
+Decrypt an encrypted restore-job private key for manual inspection:
+
+```bash
+npm run decrypt-restore-key -- --job <restore-job-id>
+```
+
+## Notes
+
+- The OpenClaw step currently captures the agent configuration required for the news-search workflow and stores it locally in SQLite.
+- Category choices are saved immediately and reloaded on the dashboard.
