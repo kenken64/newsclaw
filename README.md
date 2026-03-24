@@ -2,6 +2,19 @@
 
 NewsClaw is a Next.js 16 web application for passkey-secured news monitoring. A user signs in with WebAuthn passkeys, completes a first-login OpenClaw agent setup, and then lands on a professional dashboard to choose the news categories that should drive their workspace.
 
+## Overview
+
+NewsClaw is designed for teams that want a lightweight operator UI around an OpenClaw-style news workflow. The app handles user authentication, first-run agent setup, workspace restore, messaging-channel pairing, and category-driven dashboard personalization in one flow.
+
+## What It Does
+
+- Registers and signs in users with WebAuthn passkeys
+- Guides first-time users through agent setup before dashboard access
+- Restores a pinned AWS Lightsail snapshot through the local `clawmacdo` CLI
+- Supports per-user WhatsApp or Telegram pairing after restore
+- Stores local workspace state in SQLite
+- Lets users shape the dashboard around the news categories they actually track
+
 ## Stack
 
 - Next.js 16 with App Router and TypeScript
@@ -19,6 +32,14 @@ NewsClaw is a Next.js 16 web application for passkey-secured news monitoring. A 
 - SQLite persistence for users, passkeys, sessions, agent configuration, and category preferences
 - Dashboard experience for selecting preferred news categories
 - Tailwind + shadcn styling with a polished editorial UI
+
+## Quick Start
+
+1. Install dependencies.
+2. Create `.env` from `.env.example` and fill in the AWS and encryption settings.
+3. Run the development server.
+4. Open `http://localhost:3000` and create a passkey-backed account.
+5. Complete setup, restore, pairing, and dashboard selection.
 
 ## Environment
 
@@ -55,6 +76,14 @@ npm run dev
 ```
 
 Open http://localhost:3000.
+
+## Requirements
+
+- Node.js 20+
+- npm
+- AWS credentials with access to the target Lightsail snapshot
+- A local environment capable of WebAuthn testing
+- `clawmacdo` installed through npm dependencies
 
 ## Authentication Flow
 
@@ -112,3 +141,9 @@ npm run decrypt-restore-key -- --job <restore-job-id>
 
 - The OpenClaw step currently captures the agent configuration required for the news-search workflow and stores it locally in SQLite.
 - Category choices are saved immediately and reloaded on the dashboard.
+
+## Security Notes
+
+- `.env` is ignored and intended for local secrets only.
+- The local SQLite data directory is ignored and should not be committed.
+- Telegram bot tokens and restored private keys are encrypted before storage.
