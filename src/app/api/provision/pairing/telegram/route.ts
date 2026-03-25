@@ -7,8 +7,16 @@ import {
   getUserChannelConfigByUserId,
   upsertMessagingPairing,
 } from "@/lib/db";
-import { getRestoreInstanceIdentifier, runClawmacdoCommand, serializeMessagingPairing } from "@/lib/provisioning";
+import { decryptSecretValue } from "@/lib/secrets";
+import {
+  getRestoreInstanceIdentifier,
+  runClawmacdoCommand,
+  sanitizeProvisioningText,
+  serializeMessagingPairing,
+  spawnProvisioningWorker,
+} from "@/lib/provisioning";
 import { getCurrentUserFromRequest } from "@/lib/session";
+import { getValidationErrorMessage } from "@/lib/validation";
 
 const requestSchema = z.object({
   code: z.string().trim().min(4).max(32),
@@ -48,19 +56,57 @@ export async function POST(request: Request) {
       body.code,
     ]);
 
+    const details = sanitizeProvisioningText(result.stderr || result.stdout || "Telegram pairing failed.");
+
     if (result.code !== 0) {
+      if (/No pending pairing request found for code:/iu.test(details)) {
+        const restartMessage = "This Telegram pairing code is no longer valid. Telegram pairing is being restarted now. Send /start to the bot again, then enter the new code.";
+
+        upsertMessagingPairing({
+          userId: user.id,
+          restoreJobId: restoreJob.id,
+          channel: "telegram",
+          status: "awaiting_code",
+          instructionText: restartMessage,
+          pairingCode: null,
+          errorMessage: null,
+          lastUpdatedAt: new Date().toISOString(),
+        });
+
+        if (!channelConfig.telegramBotTokenEncrypted) {
+          return NextResponse.json({ error: restartMessage }, { status: 409 });
+        }
+
+        spawnProvisioningWorker({
+          mode: "telegram-setup",
+          restoreJobId: restoreJob.id,
+          userId: user.id,
+          instance,
+          channel: "telegram",
+          telegramBotToken: decryptSecretValue(channelConfig.telegramBotTokenEncrypted),
+        });
+
+        return NextResponse.json(
+          {
+            error: restartMessage,
+            pairing: serializeMessagingPairing(getMessagingPairingByUserId(user.id)),
+          },
+          { status: 409 },
+        );
+      }
+
       upsertMessagingPairing({
         userId: user.id,
         restoreJobId: restoreJob.id,
         channel: "telegram",
         status: "failed",
-        instructionText: result.stdout.trim(),
+        instructionText: sanitizeProvisioningText(result.stdout),
         pairingCode: body.code,
-        errorMessage: (result.stderr || result.stdout || "Telegram pairing failed.").trim(),
+        errorMessage: details,
         lastUpdatedAt: new Date().toISOString(),
       });
 
-      return NextResponse.json({ error: (result.stderr || result.stdout || "Telegram pairing failed.").trim() }, { status: 400 });
+      return NextResponse.json({ error: details }, { status: 400 });
     }
 
     upsertMessagingPairing({
@@ -68,7 +114,7 @@ export async function POST(request: Request) {
       restoreJobId: restoreJob.id,
       channel: "telegram",
       status: "completed",
-      instructionText: result.stdout.trim(),
+      instructionText: sanitizeProvisioningText(result.stdout),
       pairingCode: body.code,
       errorMessage: null,
       lastUpdatedAt: new Date().toISOString(),
@@ -76,7 +122,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ pairing: serializeMessagingPairing(getMessagingPairingByUserId(user.id)) });
   } catch (caughtError) {
-    const message = caughtError instanceof Error ? caughtError.message : "Unable to verify the Telegram pairing code.";
+    const message = getValidationErrorMessage(caughtError, "Unable to verify the Telegram pairing code.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

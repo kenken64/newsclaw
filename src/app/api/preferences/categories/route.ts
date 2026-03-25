@@ -4,6 +4,7 @@ import { z } from "zod";
 import { NEWS_CATEGORIES } from "@/lib/constants";
 import { replaceCategoryPreferences } from "@/lib/db";
 import { getCurrentUserFromRequest } from "@/lib/session";
+import { getValidationErrorMessage } from "@/lib/validation";
 
 const categoryKeys = NEWS_CATEGORIES.map((category) => category.key);
 
@@ -24,8 +25,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (caughtError) {
-    const message =
-      caughtError instanceof Error ? caughtError.message : "Unable to update categories.";
+    const message = getValidationErrorMessage(caughtError, "Unable to update categories.");
 
     return NextResponse.json({ error: message }, { status: 400 });
   }

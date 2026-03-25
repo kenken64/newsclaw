@@ -30,7 +30,20 @@ export function MessagingPairingPanel({ preferredChannel, initialPairing }: Prop
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [challengeCode, setChallengeCode] = useState("");
-  const startedRef = useRef(Boolean(initialPairing && initialPairing.status !== "failed"));
+  const canReuseInitialPairing = Boolean(
+    initialPairing &&
+      (
+        initialPairing.status === "completed" ||
+        initialPairing.status === "fetching_qr" ||
+        initialPairing.status === "qr_ready" ||
+        (
+          initialPairing.status === "awaiting_code" &&
+          !initialPairing.pairingCode &&
+          !initialPairing.errorMessage
+        )
+      )
+  );
+  const startedRef = useRef(canReuseInitialPairing);
 
   async function startPairing() {
     startedRef.current = true;

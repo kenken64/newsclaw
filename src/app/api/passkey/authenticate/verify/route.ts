@@ -9,6 +9,7 @@ import {
   updatePasskeyCounter,
 } from "@/lib/db";
 import { attachSessionCookie, createUserSession } from "@/lib/session";
+import { getValidationErrorMessage } from "@/lib/validation";
 import { verifyAuthentication } from "@/lib/webauthn";
 
 const requestSchema = z.object({
@@ -59,8 +60,7 @@ export async function POST(request: Request) {
 
     return response;
   } catch (caughtError) {
-    const message =
-      caughtError instanceof Error ? caughtError.message : "Unable to verify authentication.";
+    const message = getValidationErrorMessage(caughtError, "Unable to verify authentication.");
 
     return NextResponse.json({ error: message }, { status: 400 });
   }

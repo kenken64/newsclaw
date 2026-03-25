@@ -379,7 +379,9 @@ async function runMessagingSetup(mode) {
     restore_job_id: payload.restoreJobId,
     channel: payload.channel,
     status: pairingStatus,
+    qr_output: "",
     instruction_text: mode === "telegram-setup" ? "Setting up Telegram bot and waiting for pairing challenge code." : "Fetching WhatsApp pairing QR code.",
+    pairing_code: null,
     error_message: null,
   });
 

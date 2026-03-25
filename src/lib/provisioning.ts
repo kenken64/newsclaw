@@ -141,7 +141,7 @@ export function getProvisioningConfig() {
   };
 }
 
-function sanitizeProvisioningText(value: string | null | undefined) {
+export function sanitizeProvisioningText(value: string | null | undefined) {
   if (!value) {
     return "";
   }
@@ -220,7 +220,12 @@ export function serializeMessagingPairing(pairing: MessagingPairingRecord | null
     return null;
   }
 
-  return pairing;
+  return {
+    ...pairing,
+    qrOutput: sanitizeProvisioningText(pairing.qrOutput),
+    instructionText: sanitizeProvisioningText(pairing.instructionText),
+    errorMessage: pairing.errorMessage ? sanitizeProvisioningText(pairing.errorMessage) : null,
+  };
 }
 
 function matchRestoreOutputField(rawOutput: string, label: string) {

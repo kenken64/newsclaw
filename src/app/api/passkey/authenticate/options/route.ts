@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getPasskeysByUserId, getUserByEmail, setUserChallenge } from "@/lib/db";
+import { getValidationErrorMessage } from "@/lib/validation";
 import { buildAuthenticationOptions } from "@/lib/webauthn";
 
 const requestSchema = z.object({
@@ -34,8 +35,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ options });
   } catch (caughtError) {
-    const message =
-      caughtError instanceof Error ? caughtError.message : "Unable to prepare authentication.";
+    const message = getValidationErrorMessage(caughtError, "Unable to prepare authentication.");
 
     return NextResponse.json({ error: message }, { status: 400 });
   }

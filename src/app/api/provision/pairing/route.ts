@@ -10,6 +10,7 @@ import { decryptSecretValue } from "@/lib/secrets";
 import {
   getRestoreInstanceIdentifier,
   getPairingReadiness,
+  sanitizeProvisioningText,
   serializeMessagingPairing,
   serializeRestoreJob,
   spawnProvisioningWorker,
@@ -68,7 +69,22 @@ export async function POST(request: Request) {
 
   const pairing = getMessagingPairingByUserId(user.id);
 
-  if (pairing && ["fetching_qr", "awaiting_code", "qr_ready", "completed"].includes(pairing.status)) {
+  const canReuseExistingPairing = Boolean(
+    pairing &&
+    pairing.restoreJobId === restoreJob.id &&
+    (
+      pairing.status === "completed" ||
+      pairing.status === "fetching_qr" ||
+      pairing.status === "qr_ready" ||
+      (
+        pairing.status === "awaiting_code" &&
+        !pairing.pairingCode &&
+        !pairing.errorMessage
+      )
+    )
+  );
+
+  if (canReuseExistingPairing) {
     return NextResponse.json({ pairing: serializeMessagingPairing(pairing) });
   }
 
@@ -80,6 +96,9 @@ export async function POST(request: Request) {
     instructionText: channelConfig.preferredChannel === "telegram"
       ? "Preparing Telegram bot setup and waiting for the challenge code."
       : "Preparing WhatsApp QR setup.",
+    qrOutput: "",
+    pairingCode: null,
+    errorMessage: null,
     lastUpdatedAt: new Date().toISOString(),
   });
 

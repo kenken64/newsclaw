@@ -5,6 +5,7 @@ import { startTransition, useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
+  Clock3,
   LoaderCircle,
   Newspaper,
   Sparkles,
@@ -20,6 +21,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NEWS_CATEGORIES, type NewsCategoryKey } from "@/lib/constants";
 
 type Props = {
@@ -40,6 +43,11 @@ export function CategoryDashboard({
   const router = useRouter();
   const [selected, setSelected] = useState<NewsCategoryKey[]>(selectedCategories);
   const [saving, setSaving] = useState(false);
+  const [digestOpen, setDigestOpen] = useState(false);
+  const [digestTime, setDigestTime] = useState("08:00");
+  const [digestBusy, setDigestBusy] = useState(false);
+  const [digestError, setDigestError] = useState<string | null>(null);
+  const [digestSuccess, setDigestSuccess] = useState<string | null>(null);
 
   const priorityLaneLabels = useMemo(
     () => NEWS_CATEGORIES.filter((category) => priorityLaneKeys.includes(category.key)).map((category) => category.label),
@@ -85,6 +93,33 @@ export function CategoryDashboard({
 
     setSelected(nextCategories);
     void persistSelection(nextCategories);
+  }
+
+  async function scheduleDailyDigest() {
+    setDigestBusy(true);
+    setDigestError(null);
+    setDigestSuccess(null);
+
+    try {
+      const response = await fetch("/api/daily-digest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ time: digestTime }),
+      });
+      const payload = (await response.json()) as { error?: string; scheduledTime?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to schedule the daily digest.");
+      }
+
+      setDigestSuccess(`Daily digest scheduled for ${payload.scheduledTime ?? digestTime} UTC.`);
+    } catch (caughtError) {
+      setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to schedule the daily digest.");
+    } finally {
+      setDigestBusy(false);
+    }
   }
 
   return (
@@ -204,9 +239,50 @@ export function CategoryDashboard({
               {saving ? "Saving category preferences..." : "Selections are saved instantly for your workspace."}
             </div>
 
-            <Button variant="outline" className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white" asChild>
-              <a href="/setup-agent?edit=1">Edit preferred topics</a>
-            </Button>
+            <div className="grid gap-3">
+              <Button variant="outline" className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white" asChild>
+                <a href="/setup-agent?edit=1">Edit preferred topics</a>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                onClick={() => setDigestOpen((current) => !current)}
+              >
+                <Clock3 className="size-4" />
+                Daily Digest
+              </Button>
+
+              {digestOpen ? (
+                <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                  <p className="font-medium text-white">Schedule a daily prompt</p>
+                  <p>Pick a daily UTC time. NewsClaw will send a cron-message prompt to the restored OpenClaw instance and deliver the response to the last active channel.</p>
+                  <div className="grid gap-2">
+                    <Label htmlFor="daily-digest-time" className="text-slate-200">Daily time (UTC)</Label>
+                    <Input
+                      id="daily-digest-time"
+                      type="time"
+                      value={digestTime}
+                      onChange={(event) => setDigestTime(event.target.value)}
+                      disabled={digestBusy}
+                      className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
+                    />
+                  </div>
+                  {digestError ? <p className="rounded-2xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-rose-200">{digestError}</p> : null}
+                  {digestSuccess ? <p className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-emerald-200">{digestSuccess}</p> : null}
+                  <Button
+                    type="button"
+                    onClick={() => void scheduleDailyDigest()}
+                    disabled={digestBusy}
+                    className="h-11 rounded-2xl bg-[color:var(--brand-highlight)] text-slate-950 hover:bg-[color:var(--brand-highlight)]/90"
+                  >
+                    {digestBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Clock3 className="size-4" />}
+                    Save daily digest
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -9,6 +9,7 @@ import {
   setUserChallenge,
 } from "@/lib/db";
 import { attachSessionCookie, createUserSession } from "@/lib/session";
+import { getValidationErrorMessage } from "@/lib/validation";
 import { getPasskeyLabel, verifyRegistration } from "@/lib/webauthn";
 
 const requestSchema = z.object({
@@ -67,8 +68,7 @@ export async function POST(request: Request) {
 
     return response;
   } catch (caughtError) {
-    const message =
-      caughtError instanceof Error ? caughtError.message : "Unable to verify registration.";
+    const message = getValidationErrorMessage(caughtError, "Unable to verify registration.");
 
     return NextResponse.json({ error: message }, { status: 400 });
   }
