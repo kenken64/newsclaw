@@ -1,16 +1,15 @@
 "use client";
 
-import { startTransition, useMemo, useState } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import {
-  ArrowRight,
   CheckCircle2,
   Clock3,
   LoaderCircle,
-  Newspaper,
-  Sparkles,
+  Trash2,
+  RefreshCcw,
+  X,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,77 +22,188 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NEWS_CATEGORIES, type NewsCategoryKey } from "@/lib/constants";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
+  userId: string;
   userName: string;
   agentName: string;
   trackingTopics: string[];
-  priorityLaneKeys: NewsCategoryKey[];
-  selectedCategories: NewsCategoryKey[];
+  initialDailyDigestSchedules: DailyDigestSchedule[];
+  initialPreferredChannel: "whatsapp" | "telegram";
+  initialDeliveryTarget: string;
 };
 
+type DailyDigestSchedule = {
+  id: string;
+  time: string;
+  timezone: string;
+  utcTime: string;
+  jobName: string;
+  deliveryChannel: "whatsapp" | "telegram";
+  deliveryTarget: string;
+  promptText: string;
+};
+
+type LiveCronRecord = {
+  id: string;
+  name: string;
+  schedule: string;
+  next: string;
+  last: string;
+  status: string;
+  target: string;
+  agentId: string;
+  model: string;
+};
+
+function getCurrentSingaporeTime() {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Singapore",
+  });
+
+  return formatter.format(new Date());
+}
+
 export function CategoryDashboard({
+  userId,
   userName,
   agentName,
   trackingTopics,
-  priorityLaneKeys,
-  selectedCategories,
+  initialDailyDigestSchedules,
+  initialPreferredChannel,
+  initialDeliveryTarget,
 }: Props) {
-  const router = useRouter();
-  const [selected, setSelected] = useState<NewsCategoryKey[]>(selectedCategories);
-  const [saving, setSaving] = useState(false);
-  const [digestOpen, setDigestOpen] = useState(false);
   const [digestTime, setDigestTime] = useState("08:00");
+  const [digestRecipient, setDigestRecipient] = useState(initialDeliveryTarget);
+  const [digestPrompt, setDigestPrompt] = useState("");
   const [digestBusy, setDigestBusy] = useState(false);
+  const [digestSchedules, setDigestSchedules] = useState<DailyDigestSchedule[]>(initialDailyDigestSchedules);
+  const [digestRemovingId, setDigestRemovingId] = useState<string | null>(null);
+  const [telegramChatIdBusy, setTelegramChatIdBusy] = useState(false);
+  const [liveCronLines, setLiveCronLines] = useState<string[]>([]);
+  const [liveCronRecords, setLiveCronRecords] = useState<LiveCronRecord[]>([]);
+  const [liveCronOutput, setLiveCronOutput] = useState<string>("Loading live cron jobs...");
+  const [liveCronBusy, setLiveCronBusy] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
+  const [isLiveCronModalOpen, setIsLiveCronModalOpen] = useState(false);
   const [digestError, setDigestError] = useState<string | null>(null);
   const [digestSuccess, setDigestSuccess] = useState<string | null>(null);
+  const telegramChatIdStorageKey = `newsclaw.telegramChatId:${userId}`;
 
-  const priorityLaneLabels = useMemo(
-    () => NEWS_CATEGORIES.filter((category) => priorityLaneKeys.includes(category.key)).map((category) => category.label),
-    [priorityLaneKeys]
-  );
+  const deliveryTargetLabel = initialPreferredChannel === "telegram"
+    ? "Telegram chat ID"
+    : "WhatsApp number";
+  const deliveryTargetPlaceholder = initialPreferredChannel === "telegram"
+    ? "Numeric Telegram chat ID"
+    : "+6591234567";
 
-  const chosenLabels = useMemo(
-    () => NEWS_CATEGORIES.filter((category) => selected.includes(category.key)).map((category) => category.label),
-    [selected]
-  );
+  async function resolveTelegramChatId() {
+    if (typeof window !== "undefined") {
+      const cachedChatId = window.localStorage.getItem(telegramChatIdStorageKey)?.trim() ?? "";
 
-  async function persistSelection(nextCategories: NewsCategoryKey[]) {
-    setSaving(true);
+      if (cachedChatId) {
+        setDigestRecipient(cachedChatId);
+        return cachedChatId;
+      }
+    }
+
+    setTelegramChatIdBusy(true);
 
     try {
-      const response = await fetch("/api/preferences/categories", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ categories: nextCategories }),
-      });
-      const payload = (await response.json()) as { error?: string };
+      const response = await fetch("/api/daily-digest/telegram-chat-id", { cache: "no-store" });
+      const payload = (await response.json()) as { error?: string; chatId?: string };
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to save categories.");
+      if (!response.ok || !payload.chatId) {
+        throw new Error(payload.error ?? "Unable to fetch the Telegram chat ID.");
       }
 
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch {
-      setSelected(selectedCategories);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(telegramChatIdStorageKey, payload.chatId);
+      }
+
+      setDigestRecipient(payload.chatId);
+      return payload.chatId;
     } finally {
-      setSaving(false);
+      setTelegramChatIdBusy(false);
     }
   }
 
-  function toggleCategory(categoryKey: NewsCategoryKey) {
-    const nextCategories = selected.includes(categoryKey)
-      ? selected.filter((item) => item !== categoryKey)
-      : [...selected, categoryKey];
+  async function refreshLiveCronJobs() {
+    setLiveCronBusy(true);
 
-    setSelected(nextCategories);
-    void persistSelection(nextCategories);
+    try {
+      const response = await fetch("/api/daily-digest", { cache: "no-store" });
+      const payload = (await response.json()) as {
+        error?: string;
+        remoteRemoved?: boolean;
+        removedJobName?: string;
+        schedules?: DailyDigestSchedule[];
+        liveCronLines?: string[];
+        liveCronRecords?: LiveCronRecord[];
+        liveCronOutput?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to load live cron jobs.");
+      }
+
+      setDigestSchedules(payload.schedules ?? []);
+      setLiveCronLines(payload.liveCronLines ?? []);
+      setLiveCronRecords(payload.liveCronRecords ?? []);
+      setLiveCronOutput(payload.liveCronOutput ?? "No cron jobs.");
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : "Unable to load live cron jobs.";
+      setLiveCronLines([]);
+      setLiveCronRecords([]);
+      setLiveCronOutput(message);
+      setDigestError(message);
+    } finally {
+      setLiveCronBusy(false);
+    }
   }
+
+  useEffect(() => {
+    setHasMounted(true);
+    setDigestTime(getCurrentSingaporeTime());
+  }, []);
+
+  useEffect(() => {
+    if (!hasMounted || initialPreferredChannel !== "telegram") {
+      return;
+    }
+
+    void resolveTelegramChatId().catch((caughtError) => {
+      const message = caughtError instanceof Error ? caughtError.message : "Unable to fetch the Telegram chat ID.";
+      setDigestError(message);
+    });
+  }, [hasMounted, initialPreferredChannel]);
+
+  useEffect(() => {
+    if (!hasMounted) {
+      return;
+    }
+
+    void refreshLiveCronJobs();
+  }, [hasMounted]);
+
+  useEffect(() => {
+    if (!isLiveCronModalOpen) {
+      return;
+    }
+
+    function handleEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsLiveCronModalOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isLiveCronModalOpen]);
 
   async function scheduleDailyDigest() {
     setDigestBusy(true);
@@ -101,24 +211,97 @@ export function CategoryDashboard({
     setDigestSuccess(null);
 
     try {
+      const recipient = initialPreferredChannel === "telegram"
+        ? await resolveTelegramChatId()
+        : digestRecipient;
+
       const response = await fetch("/api/daily-digest", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ time: digestTime }),
+        body: JSON.stringify({ time: digestTime, recipient, prompt: digestPrompt }),
       });
-      const payload = (await response.json()) as { error?: string; scheduledTime?: string };
+      const payload = (await response.json()) as {
+        error?: string;
+        scheduledTime?: string;
+        scheduledTimezone?: string;
+        scheduledUtcTime?: string;
+        deliveryChannel?: "whatsapp" | "telegram";
+        deliveryTarget?: string;
+        schedules?: DailyDigestSchedule[];
+        liveCronLines?: string[];
+        liveCronRecords?: LiveCronRecord[];
+        liveCronOutput?: string;
+      };
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Unable to schedule the daily digest.");
       }
 
-      setDigestSuccess(`Daily digest scheduled for ${payload.scheduledTime ?? digestTime} UTC.`);
+      setDigestSchedules(payload.schedules ?? digestSchedules);
+      setLiveCronLines(payload.liveCronLines ?? []);
+      setLiveCronRecords(payload.liveCronRecords ?? []);
+      setLiveCronOutput(payload.liveCronOutput ?? "No cron jobs.");
+      setDigestPrompt("");
+
+      setDigestSuccess(
+        `Daily digest scheduled for ${payload.scheduledTime ?? digestTime} SGT (${payload.scheduledUtcTime ?? digestTime} UTC) via ${payload.deliveryChannel ?? initialPreferredChannel} to ${payload.deliveryTarget ?? recipient}.`
+      );
     } catch (caughtError) {
       setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to schedule the daily digest.");
     } finally {
       setDigestBusy(false);
+    }
+  }
+
+  async function removeDailyDigestSchedule(scheduleId: string) {
+    setDigestRemovingId(scheduleId);
+    setDigestError(null);
+    setDigestSuccess(null);
+
+    try {
+      const response = await fetch("/api/daily-digest", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: scheduleId }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        remoteRemoved?: boolean;
+        removedJobName?: string;
+        schedules?: DailyDigestSchedule[];
+        liveCronLines?: string[];
+        liveCronRecords?: LiveCronRecord[];
+        liveCronOutput?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to remove the daily digest.");
+      }
+
+      setDigestSchedules(payload.schedules ?? []);
+      setLiveCronLines(payload.liveCronLines ?? []);
+      setLiveCronRecords(payload.liveCronRecords ?? []);
+      setLiveCronOutput(payload.liveCronOutput ?? "No cron jobs.");
+      setDigestSuccess(
+        payload.remoteRemoved
+          ? `Daily digest removed. OpenClaw cron job ${payload.removedJobName ?? ""} was deleted as well.`.trim()
+          : "Daily digest removed."
+      );
+    } catch (caughtError) {
+      setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to remove the daily digest.");
+    } finally {
+      setDigestRemovingId(null);
+    }
+  }
+
+  function handleDigestPromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      void scheduleDailyDigest();
     }
   }
 
@@ -138,12 +321,12 @@ export function CategoryDashboard({
             <div className="space-y-2">
               <CardTitle className="text-3xl">Welcome back, {userName.split(" ")[0]}</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6 text-slate-600">
-                Choose the categories your OpenClaw agent should emphasize. Your selections become the front page of the workspace and can be revised at any time.
+                Your OpenClaw agent is driven directly by the preferred topics saved on the profile. The dashboard shows those topics instead of a second category layer.
               </CardDescription>
             </div>
           </CardHeader>
           <CardContent className="grid gap-6">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Preferred topics</p>
                 <p className="mt-3 text-3xl font-semibold text-slate-950">{trackingTopics.length}</p>
@@ -152,77 +335,140 @@ export function CategoryDashboard({
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Coverage mode</p>
                 <p className="mt-3 text-3xl font-semibold text-slate-950">Topic-led</p>
-                <p className="mt-2 text-sm text-slate-600">Priority lanes are inferred from preferred topics and region instead of a generic feed.</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Active categories</p>
-                <p className="mt-3 text-3xl font-semibold text-slate-950">{selected.length}</p>
-                <p className="mt-2 text-sm text-slate-600">Focused lanes shown first in the dashboard.</p>
+                <p className="mt-2 text-sm text-slate-600">Skills, summaries, and prompts are generated from the saved preferred topics and region.</p>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
-              {NEWS_CATEGORIES.map((category) => {
-                const active = selected.includes(category.key);
-
-                return (
-                  <button
-                    key={category.key}
-                    type="button"
-                    onClick={() => toggleCategory(category.key)}
-                    className={`group rounded-[28px] border p-5 text-left transition ${
-                      active
-                        ? "border-[color:var(--brand-highlight)]/30 bg-[linear-gradient(180deg,rgba(254,245,224,1),rgba(255,255,255,1))] shadow-[0_18px_40px_-30px_rgba(12,34,64,0.5)]"
-                        : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_40px_-32px_rgba(12,34,64,0.3)]"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className={`rounded-2xl p-3 ${active ? "bg-[color:var(--brand-ink)] text-white" : "bg-slate-100 text-slate-700"}`}>
-                        <Newspaper className="size-5" />
+            <div className="grid gap-3 rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-[0_18px_40px_-32px_rgba(12,34,64,0.2)]">
+              <div className="space-y-2">
+                <h2 className="text-xl font-semibold text-slate-950">Daily digests</h2>
+                <p>Add as many daily digest times as you need. Every saved time runs once per day in Singapore time (SGT, UTC+8).</p>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="daily-digest-time" className="text-slate-700">Add daily time (Singapore, SGT)</Label>
+                <form
+                  className="grid gap-3"
+                  onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                    event.preventDefault();
+                    void scheduleDailyDigest();
+                  }}
+                >
+                  <div className="relative">
+                    <Input
+                      id="daily-digest-time"
+                      type="time"
+                      value={digestTime}
+                      onChange={(event) => setDigestTime(event.target.value)}
+                      disabled={digestBusy}
+                      className="border-slate-200 bg-slate-50 pr-11 text-slate-950"
+                    />
+                    <button
+                      type="submit"
+                      disabled={digestBusy}
+                      aria-label="Add daily digest"
+                      title="Add daily digest"
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-slate-500 transition hover:text-slate-900 disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      {digestBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Clock3 className="size-4" />}
+                    </button>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="daily-digest-prompt" className="text-slate-700">Prompt</Label>
+                    <Textarea
+                      id="daily-digest-prompt"
+                      value={digestPrompt}
+                      onChange={(event) => setDigestPrompt(event.target.value)}
+                      onKeyDown={handleDigestPromptKeyDown}
+                      disabled={digestBusy}
+                      placeholder="Optional instructions for this daily digest, such as format, focus areas, or output style."
+                      className="min-h-24 border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
+                    />
+                  </div>
+                  {initialPreferredChannel === "telegram" ? (
+                    <div className="grid gap-2">
+                      <Label className="text-slate-700">Telegram chat ID</Label>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                        {telegramChatIdBusy
+                          ? "Fetching Telegram chat ID from OpenClaw..."
+                          : digestRecipient
+                            ? `Using Telegram chat ID ${digestRecipient}`
+                            : "Telegram chat ID will be fetched from OpenClaw before saving."}
                       </div>
-                      {active ? <CheckCircle2 className="size-5 text-[color:var(--brand-ink)]" /> : null}
                     </div>
-                    <h3 className="mt-5 text-lg font-semibold text-slate-950">{category.label}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{category.description}</p>
-                    <div className="mt-5 flex items-center gap-2 text-sm font-medium text-[color:var(--brand-ink)]">
-                      {active ? "Included in briefing" : "Add to briefing"}
-                      <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
+                  ) : (
+                    <div className="grid gap-2">
+                      <Label htmlFor="daily-digest-recipient" className="text-slate-700">{deliveryTargetLabel}</Label>
+                      <Input
+                        id="daily-digest-recipient"
+                        type="text"
+                        value={digestRecipient}
+                        onChange={(event) => setDigestRecipient(event.target.value)}
+                        disabled={digestBusy}
+                        placeholder={deliveryTargetPlaceholder}
+                        className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
+                      />
                     </div>
-                  </button>
-                );
-              })}
+                  )}
+                </form>
+                <p className="text-xs text-slate-500">
+                  {initialPreferredChannel === "telegram"
+                    ? "Telegram chat ID is loaded from local storage when available, otherwise fetched from OpenClaw before saving. Press Enter in the time field, or Cmd/Ctrl + Enter in the prompt field, to add this daily digest."
+                    : "Use an E.164 WhatsApp number such as +6591234567. Press Enter in the time field, or Cmd/Ctrl + Enter in the prompt field, to add this daily digest."}
+                </p>
+              </div>
+              <div className="grid gap-2">
+                {digestSchedules.length > 0 ? digestSchedules.map((schedule) => (
+                  <div key={schedule.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-950">{schedule.time} SGT</p>
+                      <p className="text-xs text-slate-500">{schedule.utcTime} UTC</p>
+                      <p className="text-xs text-slate-500">
+                        {schedule.deliveryChannel === "telegram" ? "Telegram" : "WhatsApp"}: {schedule.deliveryTarget || "Legacy target"}
+                      </p>
+                      {schedule.promptText ? <p className="mt-2 text-xs leading-5 text-slate-600">{schedule.promptText}</p> : null}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void removeDailyDigestSchedule(schedule.id)}
+                      disabled={digestRemovingId === schedule.id || digestBusy}
+                      className="h-9 rounded-2xl border-slate-200 bg-white px-3 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+                    >
+                      {digestRemovingId === schedule.id ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                      Remove
+                    </Button>
+                  </div>
+                )) : (
+                  <p className="rounded-2xl border border-dashed border-slate-200 px-3 py-4 text-slate-500">
+                    No daily digests scheduled yet.
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsLiveCronModalOpen(true)}
+                  className="h-11 rounded-2xl border-slate-200 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+                >
+                  <RefreshCcw className="size-4" />
+                  View live OpenClaw schedules
+                </Button>
+                {digestError ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">{digestError}</p> : null}
+                {digestSuccess ? <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">{digestSuccess}</p> : null}
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-white/60 bg-[linear-gradient(180deg,rgba(15,36,64,0.96),rgba(13,26,45,0.92))] text-white shadow-[0_30px_100px_-40px_rgba(12,34,64,0.55)]">
           <CardHeader>
-            <CardTitle className="text-xl">Coverage summary</CardTitle>
+            <CardTitle className="text-xl">Agent summary</CardTitle>
             <CardDescription className="text-slate-300">
-              NewsClaw is tuned for a curated brief instead of a generic feed.
+              NewsClaw is tuned directly from your saved preferred topics.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-white/10 p-3 text-[color:var(--brand-highlight)]">
-                  <Sparkles className="size-5" />
-                </div>
-                <div>
-                  <p className="text-sm text-slate-300">Priority lanes</p>
-                  <p className="text-lg font-semibold">{priorityLaneLabels.length > 0 ? priorityLaneLabels.length : "None inferred yet"}</p>
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {priorityLaneLabels.length > 0 ? priorityLaneLabels.map((label) => (
-                  <Badge key={label} className="rounded-full bg-[color:var(--brand-highlight)]/20 text-[color:var(--brand-highlight)] hover:bg-[color:var(--brand-highlight)]/20">
-                    {label}
-                  </Badge>
-                )) : <p className="text-sm text-slate-400">Add preferred topics to infer the dashboard lanes.</p>}
-              </div>
-              <p className="mt-4 text-sm text-slate-300">These lanes are generated from the preferred topics and region saved in your OpenClaw profile.</p>
-            </div>
-
             <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-slate-300">
               <p className="font-medium text-white">Preferred topics</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -232,60 +478,107 @@ export function CategoryDashboard({
                   </Badge>
                 )) : <p className="text-sm text-slate-400">No preferred topics saved yet.</p>}
               </div>
-            </div>
-
-            <div className="flex items-center gap-3 text-sm text-slate-300">
-              {saving ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCircle2 className="size-4 text-[color:var(--brand-highlight)]" />}
-              {saving ? "Saving category preferences..." : "Selections are saved instantly for your workspace."}
+              <p className="mt-4 text-sm text-slate-300">These topics are what the skill bundle and daily digest prompts use as their editorial input.</p>
             </div>
 
             <div className="grid gap-3">
               <Button variant="outline" className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white" asChild>
                 <a href="/setup-agent?edit=1">Edit preferred topics</a>
               </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-                onClick={() => setDigestOpen((current) => !current)}
-              >
-                <Clock3 className="size-4" />
-                Daily Digest
-              </Button>
-
-              {digestOpen ? (
-                <div className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                  <p className="font-medium text-white">Schedule a daily prompt</p>
-                  <p>Pick a daily UTC time. NewsClaw will send a cron-message prompt to the restored OpenClaw instance and deliver the response to the last active channel.</p>
-                  <div className="grid gap-2">
-                    <Label htmlFor="daily-digest-time" className="text-slate-200">Daily time (UTC)</Label>
-                    <Input
-                      id="daily-digest-time"
-                      type="time"
-                      value={digestTime}
-                      onChange={(event) => setDigestTime(event.target.value)}
-                      disabled={digestBusy}
-                      className="border-white/15 bg-white/10 text-white [color-scheme:dark]"
-                    />
-                  </div>
-                  {digestError ? <p className="rounded-2xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-rose-200">{digestError}</p> : null}
-                  {digestSuccess ? <p className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-emerald-200">{digestSuccess}</p> : null}
-                  <Button
-                    type="button"
-                    onClick={() => void scheduleDailyDigest()}
-                    disabled={digestBusy}
-                    className="h-11 rounded-2xl bg-[color:var(--brand-highlight)] text-slate-950 hover:bg-[color:var(--brand-highlight)]/90"
-                  >
-                    {digestBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Clock3 className="size-4" />}
-                    Save daily digest
-                  </Button>
-                </div>
-              ) : null}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {isLiveCronModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm"
+          onClick={() => setIsLiveCronModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-5xl rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,36,64,0.98),rgba(13,26,45,0.96))] shadow-[0_30px_100px_-40px_rgba(12,34,64,0.7)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-white">Live OpenClaw schedules</h2>
+                <p className="mt-1 text-sm text-slate-300">Live cron jobs fetched directly from `clawmacdo cron-list`.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void refreshLiveCronJobs()}
+                  disabled={liveCronBusy || !hasMounted}
+                  className="h-9 rounded-2xl border-white/15 bg-white/5 px-3 text-white hover:bg-white/10 hover:text-white"
+                >
+                  {liveCronBusy ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+                  Refresh
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsLiveCronModalOpen(false)}
+                  className="h-9 w-9 rounded-2xl border-white/15 bg-white/5 p-0 text-white hover:bg-white/10 hover:text-white"
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="max-h-[70vh] overflow-auto px-6 py-5">
+              {!hasMounted ? (
+                <p className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">
+                  Loading live schedules...
+                </p>
+              ) : liveCronRecords.length > 0 ? (
+                <div className="overflow-auto rounded-3xl border border-white/10 bg-white/5">
+                  <table className="min-w-[980px] w-full border-collapse text-left text-sm text-slate-200">
+                    <thead className="sticky top-0 bg-[rgba(14,28,49,0.96)] text-xs uppercase tracking-[0.18em] text-slate-400 backdrop-blur">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">ID</th>
+                        <th className="px-4 py-3 font-medium">Name</th>
+                        <th className="px-4 py-3 font-medium">Schedule</th>
+                        <th className="px-4 py-3 font-medium">Next</th>
+                        <th className="px-4 py-3 font-medium">Last</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 font-medium">Target</th>
+                        <th className="px-4 py-3 font-medium">Agent ID</th>
+                        <th className="px-4 py-3 font-medium">Model</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {liveCronRecords.map((record) => (
+                        <tr key={record.id} className="border-t border-white/10 align-top">
+                          <td className="px-4 py-3 font-mono text-xs text-slate-400">{record.id}</td>
+                          <td className="px-4 py-3">
+                            <p className="max-w-[220px] truncate font-medium text-white">{record.name}</p>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-300">{record.schedule}</td>
+                          <td className="px-4 py-3 text-slate-300">{record.next}</td>
+                          <td className="px-4 py-3 text-slate-400">{record.last}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${record.status === "idle" ? "border border-emerald-400/20 bg-emerald-400/10 text-emerald-200" : record.status === "error" ? "border border-rose-400/20 bg-rose-400/10 text-rose-200" : "border border-white/15 bg-white/5 text-slate-200"}`}>
+                              {record.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-300">{record.target}</td>
+                          <td className="px-4 py-3 text-slate-400">{record.agentId}</td>
+                          <td className="px-4 py-3 text-slate-400">{record.model}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">
+                  {liveCronOutput}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

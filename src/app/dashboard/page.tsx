@@ -7,12 +7,11 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  getCategoryPreferencesByUserId,
+  getDailyDigestSchedulesByUserId,
   getOpenClawAgentByUserId,
+  getUserChannelConfigByUserId,
 } from "@/lib/db";
-import { inferPriorityLaneKeys } from "@/lib/constants";
 import { requireUser } from "@/lib/session";
-import type { NewsCategoryKey } from "@/lib/constants";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -23,13 +22,25 @@ export default async function DashboardPage() {
   }
 
   const agent = getOpenClawAgentByUserId(user.id);
+  const channelConfig = getUserChannelConfigByUserId(user.id);
 
   if (!agent) {
     redirect("/setup-agent");
   }
 
-  const selectedCategories = getCategoryPreferencesByUserId(user.id) as NewsCategoryKey[];
-  const inferredPriorityLanes = inferPriorityLaneKeys(agent.trackingTopics, agent.region);
+  const dailyDigestSchedules = getDailyDigestSchedulesByUserId(user.id).map((schedule) => ({
+    id: schedule.id,
+    time: schedule.timeSgt,
+    timezone: "Asia/Singapore",
+    utcTime: schedule.timeUtc,
+    jobName: schedule.jobName,
+    deliveryChannel: schedule.deliveryChannel,
+    deliveryTarget: schedule.deliveryTarget,
+    promptText: schedule.promptText,
+  }));
+  const initialDeliveryTarget = channelConfig?.preferredChannel === "whatsapp"
+    ? (channelConfig.whatsappPhoneNumber ?? "")
+    : "";
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,212,113,0.18),transparent_28%),linear-gradient(180deg,#eef4f8_0%,#e8eef4_100%)] px-6 py-8 lg:px-10">
@@ -67,8 +78,8 @@ export default async function DashboardPage() {
                 <LayoutGrid className="size-5" />
               </div>
               <div>
-                <p className="font-medium text-slate-950">Current categories</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">{selectedCategories.length > 0 ? selectedCategories.length : "No categories selected yet"}</p>
+                <p className="font-medium text-slate-950">Preferred topics</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{agent.trackingTopics.length > 0 ? agent.trackingTopics.length : "No preferred topics yet"}</p>
               </div>
             </CardContent>
           </Card>
@@ -79,18 +90,20 @@ export default async function DashboardPage() {
               </div>
               <div>
                 <p className="font-medium text-slate-950">Persistence</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">Your workspace, agent configuration, and category preferences are stored locally for quick reuse.</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">Your workspace, agent configuration, and preferred topics are stored locally for quick reuse.</p>
               </div>
             </CardContent>
           </Card>
         </div>
 
         <CategoryDashboard
+          userId={user.id}
           userName={user.name}
           agentName={agent.agentName}
           trackingTopics={agent.trackingTopics}
-          priorityLaneKeys={inferredPriorityLanes.length > 0 ? inferredPriorityLanes : selectedCategories}
-          selectedCategories={selectedCategories}
+          initialDailyDigestSchedules={dailyDigestSchedules}
+          initialPreferredChannel={channelConfig?.preferredChannel ?? "whatsapp"}
+          initialDeliveryTarget={initialDeliveryTarget}
         />
       </div>
     </main>

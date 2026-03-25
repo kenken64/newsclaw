@@ -5,7 +5,7 @@ import path from "node:path";
 
 import JSZip from "jszip";
 
-import { NEWS_CATEGORIES, inferPriorityLaneKeys } from "@/lib/constants";
+import { NEWS_CATEGORIES, inferRelatedCategoryKeys } from "@/lib/constants";
 
 type NewsClawSkillInput = {
   agentName: string;
@@ -64,12 +64,12 @@ function buildTopicQuery(topic: string, region: string, suffix: string) {
 }
 
 function renderSkillMarkdown(input: NewsClawSkillInput) {
-  const activeCategories = inferPriorityLaneKeys(input.trackingTopics, input.region)
+  const relatedCategories = inferRelatedCategoryKeys(input.trackingTopics, input.region)
     .map((key) => CATEGORY_BY_KEY.get(key))
     .filter((category): category is NonNullable<typeof category> => Boolean(category));
 
-  const categoryList = activeCategories.length > 0
-    ? activeCategories.map((category) => `- ${category.label} (${category.key})`).join("\n")
+  const categoryList = relatedCategories.length > 0
+    ? relatedCategories.map((category) => `- ${category.label} (${category.key})`).join("\n")
     : "- Technology (technology)";
 
   const topicList = input.trackingTopics.map((topic) => `- ${topic}`).join("\n");
@@ -84,7 +84,7 @@ metadata: { "newsclaw": { "agentName": ${quoteYamlValue(input.agentName)}, "regi
 # NewsClaw - Personalized Briefing Agent
 
 You are NewsClaw, the personalized news editor for ${input.agentName}.
-Build briefings around the saved preferred topics, region focus, and dashboard lanes.
+Build briefings around the saved preferred topics, region focus, and related coverage categories.
 
 ## Saved Focus
 
@@ -94,16 +94,16 @@ ${input.region}
 Preferred topics:
 ${topicList}
 
-Active dashboard categories:
+Related coverage categories:
 ${categoryList}
 
 ## Behaviour Rules
 
 1. Always fetch fresh reporting for current events. Do not rely on stale training knowledge for time-sensitive news.
-2. Start from the saved preferred topics first, then widen to the active dashboard categories when the user asks for a broader digest.
+2. Start from the saved preferred topics first, then widen to the related coverage categories when the user asks for a broader digest.
 3. Keep summaries concise and decision-oriented. Prefer primary or high-signal reporting.
 4. Include the direct source URL for every story.
-5. When the user asks for a default briefing, prioritize the active dashboard categories listed above.
+5. When the user asks for a broader briefing, use the related coverage categories listed above to add structure and context.
 
 ## Search Query Templates
 
@@ -111,17 +111,17 @@ Use the following topic-first queries and adapt them to the current month and ye
 
 ${defaultQueries}
 
-If the user asks for a broader digest, combine the topic-first queries with the active dashboard categories from categories.md.
+If the user asks for a broader digest, combine the topic-first queries with the related coverage categories from categories.md.
 `;
 }
 
 function renderCategoriesMarkdown(input: NewsClawSkillInput) {
-  const activeCategories = inferPriorityLaneKeys(input.trackingTopics, input.region)
+  const relatedCategories = inferRelatedCategoryKeys(input.trackingTopics, input.region)
     .map((key) => CATEGORY_BY_KEY.get(key))
     .filter((category): category is NonNullable<typeof category> => Boolean(category));
 
-  const categorySections = activeCategories.length > 0
-    ? activeCategories.map((category) => {
+  const categorySections = relatedCategories.length > 0
+    ? relatedCategories.map((category) => {
         const categoryQueries = [
           `- ${quoteYamlValue(`${category.label} news ${input.region} {MONTH} {YEAR}`)}`,
           ...input.trackingTopics.slice(0, 3).map((topic) => buildTopicQuery(topic, input.region, category.label)),
@@ -164,7 +164,7 @@ ${input.trackingTopics.map((topic) => [
 }
 
 function buildOpenAiPrompt(input: NewsClawSkillInput) {
-  const activeCategories = inferPriorityLaneKeys(input.trackingTopics, input.region)
+  const relatedCategories = inferRelatedCategoryKeys(input.trackingTopics, input.region)
     .map((key) => CATEGORY_BY_KEY.get(key))
     .filter((category): category is NonNullable<typeof category> => Boolean(category));
 
@@ -182,7 +182,7 @@ function buildOpenAiPrompt(input: NewsClawSkillInput) {
       agentName: input.agentName,
       region: input.region,
       trackingTopics: input.trackingTopics,
-      inferredCategories: activeCategories.map((category) => ({
+      relatedCategories: relatedCategories.map((category) => ({
         key: category.key,
         label: category.label,
         description: category.description,
@@ -196,8 +196,8 @@ function buildOpenAiPrompt(input: NewsClawSkillInput) {
           "Keep the file production-ready for direct use.",
         ],
         categoriesMd: [
-          "Summarize the inferred categories and how they relate to the preferred topics.",
-          "Include targeted query ideas for each inferred category.",
+          "Summarize the related coverage categories and how they relate to the preferred topics.",
+          "Include targeted query ideas for each related coverage category.",
           "Add a section for preferred-topic-specific search suggestions.",
         ],
       },

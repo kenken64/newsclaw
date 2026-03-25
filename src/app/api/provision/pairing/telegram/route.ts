@@ -19,7 +19,7 @@ import { getCurrentUserFromRequest } from "@/lib/session";
 import { getValidationErrorMessage } from "@/lib/validation";
 
 const requestSchema = z.object({
-  code: z.string().trim().min(4).max(32),
+  code: z.string().trim().min(4).max(128),
 });
 
 export async function POST(request: Request) {

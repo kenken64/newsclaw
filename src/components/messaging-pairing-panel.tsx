@@ -175,8 +175,12 @@ export function MessagingPairingPanel({ preferredChannel, initialPairing }: Prop
                 <Input
                   id="telegram-code"
                   value={challengeCode}
-                  onChange={(event) => setChallengeCode(event.target.value.toUpperCase())}
-                  placeholder="ABCD1234"
+                  onChange={(event) => setChallengeCode(event.target.value)}
+                  placeholder="Paste the code from Telegram"
+                  maxLength={128}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   disabled={busy || completed}
                 />
               </div>

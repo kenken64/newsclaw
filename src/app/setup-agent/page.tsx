@@ -88,7 +88,7 @@ export default async function SetupAgentPage({ searchParams }: SetupAgentPagePro
                 <p className="font-medium text-slate-950">Personalized dashboard</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
                   {editMode
-                    ? "Preferred topics automatically reshape the priority lanes shown on the dashboard."
+                    ? "Preferred topics automatically reshape the brief and generated skill guidance shown in the workspace."
                     : "After setup, NewsClaw restores the user workspace snapshot and then runs the selected messaging pairing flow."}
                 </p>
               </div>

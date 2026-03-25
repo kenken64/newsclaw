@@ -1,14 +1,13 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
   getLatestRestoreJobByUserId,
+  getOpenClawAgentByUserId,
   getUserChannelConfigByUserId,
-  replaceCategoryPreferences,
   upsertOpenClawAgent,
   upsertUserChannelConfig,
 } from "@/lib/db";
-import { inferPriorityLaneKeys } from "@/lib/constants";
 import { writeNewsClawSkillFiles } from "@/lib/newsclaw-skills";
 import {
   getRestoreInstanceIdentifier,
@@ -28,6 +27,29 @@ const requestSchema = z.object({
   telegramBotToken: z.string().trim().max(200).optional(),
 });
 
+function skillInputsChanged(
+  existingAgent: ReturnType<typeof getOpenClawAgentByUserId>,
+  nextInput: {
+    agentName: string;
+    trackingTopics: string[];
+    region: string;
+  },
+) {
+  if (!existingAgent) {
+    return true;
+  }
+
+  if (existingAgent.agentName !== nextInput.agentName || existingAgent.region !== nextInput.region) {
+    return true;
+  }
+
+  if (existingAgent.trackingTopics.length !== nextInput.trackingTopics.length) {
+    return true;
+  }
+
+  return existingAgent.trackingTopics.some((topic, index) => topic !== nextInput.trackingTopics[index]);
+}
+
 export async function POST(request: Request) {
   const user = getCurrentUserFromRequest(request);
 
@@ -37,6 +59,7 @@ export async function POST(request: Request) {
 
   try {
     const body = requestSchema.parse(await request.json());
+    const existingAgent = getOpenClawAgentByUserId(user.id);
     const existingChannelConfig = getUserChannelConfigByUserId(user.id);
 
     if (body.preferredChannel === "whatsapp" && !body.whatsAppPhoneNumber) {
@@ -51,7 +74,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Telegram bot token is required." }, { status: 400 });
     }
 
-    const skillBundle = await writeNewsClawSkillFiles({
+    const shouldSyncSkills = skillInputsChanged(existingAgent, {
       agentName: body.agentName,
       trackingTopics: body.trackingTopics,
       region: body.region,
@@ -67,8 +90,6 @@ export async function POST(request: Request) {
       freshness: "On demand",
     });
 
-    replaceCategoryPreferences(user.id, inferPriorityLaneKeys(body.trackingTopics, body.region));
-
     upsertUserChannelConfig({
       userId: user.id,
       preferredChannel: body.preferredChannel,
@@ -81,33 +102,50 @@ export async function POST(request: Request) {
           : null,
     });
 
-    const latestRestoreJob = getLatestRestoreJobByUserId(user.id);
+    if (shouldSyncSkills) {
+      after(async () => {
+        try {
+          const skillBundle = await writeNewsClawSkillFiles({
+            agentName: body.agentName,
+            trackingTopics: body.trackingTopics,
+            region: body.region,
+          });
 
-    if (latestRestoreJob?.status === "completed") {
-      const instanceIdentifier = getRestoreInstanceIdentifier(latestRestoreJob);
+          const latestRestoreJob = getLatestRestoreJobByUserId(user.id);
 
-      if (!instanceIdentifier) {
-        throw new Error("Saved preferred topics, but no deployment identifier is available to deploy the NewsClaw skill bundle.");
-      }
+          if (latestRestoreJob?.status !== "completed") {
+            return;
+          }
 
-      const deployResult = await runClawmacdoCommand([
-        "skill-deploy",
-        "--instance",
-        instanceIdentifier,
-        "--file",
-        skillBundle.zipFilePath,
-      ]);
+          const instanceIdentifier = getRestoreInstanceIdentifier(latestRestoreJob);
 
-      if (deployResult.code !== 0) {
-        throw new Error(
-          sanitizeProvisioningText(
-            deployResult.stderr || deployResult.stdout || "Unable to deploy the NewsClaw skill bundle to the OpenClaw instance.",
-          ),
-        );
-      }
+          if (!instanceIdentifier) {
+            console.error("Saved preferred topics, but no deployment identifier is available to deploy the NewsClaw skill bundle.");
+            return;
+          }
+
+          const deployResult = await runClawmacdoCommand([
+            "skill-deploy",
+            "--instance",
+            instanceIdentifier,
+            "--file",
+            skillBundle.zipFilePath,
+          ]);
+
+          if (deployResult.code !== 0) {
+            console.error(
+              sanitizeProvisioningText(
+                deployResult.stderr || deployResult.stdout || "Unable to deploy the NewsClaw skill bundle to the OpenClaw instance.",
+              ),
+            );
+          }
+        } catch (caughtError) {
+          console.error("Unable to sync NewsClaw skill bundle after saving preferred topics.", caughtError);
+        }
+      });
     }
 
-    return NextResponse.json({ success: true, nextPath: "/restore-instance" });
+    return NextResponse.json({ success: true, nextPath: "/restore-instance", skillSyncQueued: shouldSyncSkills });
   } catch (caughtError) {
     const message = getValidationErrorMessage(caughtError, "Unable to save OpenClaw agent.");
 

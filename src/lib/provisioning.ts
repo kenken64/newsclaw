@@ -280,6 +280,28 @@ export function runClawmacdoCommand(commandArgs: string[]) {
   });
 }
 
+export async function getTelegramChatIdFromInstance(instance: string) {
+  const result = await runClawmacdoCommand([
+    "telegram-chat-id",
+    "--instance",
+    instance,
+  ]);
+
+  const output = sanitizeProvisioningText(result.stdout || result.stderr);
+
+  if (result.code !== 0) {
+    throw new Error(output || "Unable to fetch the Telegram chat ID from OpenClaw.");
+  }
+
+  const chatIdMatch = output.match(/"allowFrom"\s*:\s*\[\s*"(-?\d+)"/u);
+
+  if (!chatIdMatch?.[1]) {
+    throw new Error("No Telegram chat ID is available on the restored OpenClaw instance yet.");
+  }
+
+  return chatIdMatch[1];
+}
+
 function runExternalCommand(command: string, commandArgs: string[]) {
   return new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
     const spawnOptions = getSpawnOptions(command, commandArgs);

@@ -55,13 +55,6 @@ type OpenClawAgentRow = {
   updated_at: string;
 };
 
-type CategoryPreferenceRow = {
-  id: string;
-  user_id: string;
-  category_key: string;
-  created_at: string;
-};
-
 type RestoreJobRow = {
   id: string;
   user_id: string;
@@ -120,6 +113,19 @@ type MessagingPairingRow = {
   pairing_code: string | null;
   error_message: string | null;
   last_updated_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DailyDigestScheduleRow = {
+  id: string;
+  user_id: string;
+  time_sgt: string;
+  time_utc: string;
+  job_name: string;
+  delivery_channel: string | null;
+  delivery_target: string | null;
+  prompt_text: string;
   created_at: string;
   updated_at: string;
 };
@@ -224,6 +230,19 @@ export type MessagingPairingRecord = {
   pairingCode: string | null;
   errorMessage: string | null;
   lastUpdatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DailyDigestScheduleRecord = {
+  id: string;
+  userId: string;
+  timeSgt: string;
+  timeUtc: string;
+  jobName: string;
+  deliveryChannel: "whatsapp" | "telegram";
+  deliveryTarget: string;
+  promptText: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -365,6 +384,21 @@ function mapMessagingPairing(row: MessagingPairingRow): MessagingPairingRecord {
   };
 }
 
+function mapDailyDigestSchedule(row: DailyDigestScheduleRow): DailyDigestScheduleRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    timeSgt: row.time_sgt,
+    timeUtc: row.time_utc,
+    jobName: row.job_name,
+    deliveryChannel: (row.delivery_channel as "whatsapp" | "telegram" | null) ?? "whatsapp",
+    deliveryTarget: row.delivery_target ?? "",
+    promptText: row.prompt_text ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 declare global {
   var __newsClawDb: Database.Database | undefined;
 }
@@ -414,15 +448,6 @@ function initDatabase(database: Database.Database) {
       freshness TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS category_preferences (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      category_key TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      UNIQUE (user_id, category_key),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -493,10 +518,29 @@ function initDatabase(database: Database.Database) {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (restore_job_id) REFERENCES restore_jobs(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS daily_digest_schedules (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      time_sgt TEXT NOT NULL,
+      time_utc TEXT NOT NULL,
+      job_name TEXT NOT NULL,
+      delivery_channel TEXT NOT NULL DEFAULT 'whatsapp',
+      delivery_target TEXT NOT NULL DEFAULT '',
+      prompt_text TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (user_id, time_sgt),
+      UNIQUE (job_name),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   ensureColumn(database, "restore_jobs", "ssh_private_key_encrypted", "TEXT");
   ensureColumn(database, "restore_jobs", "worker_pid", "INTEGER");
+  ensureColumn(database, "daily_digest_schedules", "delivery_channel", "TEXT NOT NULL DEFAULT 'whatsapp'");
+  ensureColumn(database, "daily_digest_schedules", "delivery_target", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(database, "daily_digest_schedules", "prompt_text", "TEXT NOT NULL DEFAULT ''");
 }
 
 function ensureColumn(database: Database.Database, tableName: string, columnName: string, definition: string) {
@@ -744,32 +788,77 @@ export function upsertOpenClawAgent(input: {
   return record;
 }
 
-export function replaceCategoryPreferences(userId: string, categoryKeys: string[]) {
-  const insertPreference = db.prepare(
-    "INSERT INTO category_preferences (id, user_id, category_key, created_at) VALUES (?, ?, ?, ?)"
-  );
-  const deletePreferences = db.prepare(
-    "DELETE FROM category_preferences WHERE user_id = ?"
-  );
-
-  const transaction = db.transaction((keys: string[]) => {
-    deletePreferences.run(userId);
-    for (const key of keys) {
-      insertPreference.run(crypto.randomUUID(), userId, key, new Date().toISOString());
-    }
-  });
-
-  transaction(categoryKeys);
-}
-
-export function getCategoryPreferencesByUserId(userId: string) {
+export function getDailyDigestSchedulesByUserId(userId: string) {
   const rows = db
     .prepare(
-      "SELECT * FROM category_preferences WHERE user_id = ? ORDER BY created_at ASC"
+      "SELECT * FROM daily_digest_schedules WHERE user_id = ? ORDER BY time_sgt ASC"
     )
-    .all(userId) as CategoryPreferenceRow[];
+    .all(userId) as DailyDigestScheduleRow[];
 
-  return rows.map((row) => row.category_key);
+  return rows.map(mapDailyDigestSchedule);
+}
+
+export function getDailyDigestScheduleById(id: string) {
+  const row = db
+    .prepare("SELECT * FROM daily_digest_schedules WHERE id = ?")
+    .get(id) as DailyDigestScheduleRow | undefined;
+
+  return row ? mapDailyDigestSchedule(row) : null;
+}
+
+export function getDailyDigestScheduleByUserIdAndTime(userId: string, timeSgt: string) {
+  const row = db
+    .prepare("SELECT * FROM daily_digest_schedules WHERE user_id = ? AND time_sgt = ?")
+    .get(userId, timeSgt) as DailyDigestScheduleRow | undefined;
+
+  return row ? mapDailyDigestSchedule(row) : null;
+}
+
+export function createDailyDigestSchedule(input: {
+  userId: string;
+  timeSgt: string;
+  timeUtc: string;
+  jobName: string;
+  deliveryChannel: "whatsapp" | "telegram";
+  deliveryTarget: string;
+  promptText: string;
+}) {
+  const timestamp = new Date().toISOString();
+  const record: DailyDigestScheduleRecord = {
+    id: crypto.randomUUID(),
+    userId: input.userId,
+    timeSgt: input.timeSgt,
+    timeUtc: input.timeUtc,
+    jobName: input.jobName,
+    deliveryChannel: input.deliveryChannel,
+    deliveryTarget: input.deliveryTarget.trim(),
+    promptText: input.promptText,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  db.prepare(
+    `INSERT INTO daily_digest_schedules (
+      id, user_id, time_sgt, time_utc, job_name, delivery_channel, delivery_target, prompt_text, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    record.id,
+    record.userId,
+    record.timeSgt,
+    record.timeUtc,
+    record.jobName,
+    record.deliveryChannel,
+    record.deliveryTarget,
+    record.promptText,
+    record.createdAt,
+    record.updatedAt
+  );
+
+  return record;
+}
+
+export function deleteDailyDigestSchedule(id: string) {
+  db.prepare("DELETE FROM daily_digest_schedules WHERE id = ?").run(id);
 }
 
 export function createRestoreJob(input: {

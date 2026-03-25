@@ -171,7 +171,7 @@ function addScore(scores: Map<NewsCategoryKey, number>, categoryKey: NewsCategor
   scores.set(categoryKey, (scores.get(categoryKey) ?? 0) + amount);
 }
 
-export function inferPriorityLaneKeys(
+export function inferRelatedCategoryKeys(
   trackingTopics: string[],
   region?: string,
 ): NewsCategoryKey[] {
