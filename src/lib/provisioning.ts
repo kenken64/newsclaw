@@ -12,6 +12,10 @@ import type {
 
 export const DEFAULT_LIGHTSAIL_REGION = "ap-southeast-1";
 export const DEFAULT_LIGHTSAIL_SIZE = "s-2vcpu-4gb";
+export const DEFAULT_DIGITALOCEAN_REGION = "sgp1";
+export const DEFAULT_DIGITALOCEAN_SIZE = "s-2vcpu-4gb";
+
+export type ProvisioningProvider = "lightsail" | "digitalocean";
 
 const PROVISIONING_NOISE_PATTERNS = [
   /^\[stderr\]\s*Azure CLI not found .*$/u,
@@ -29,6 +33,7 @@ type WorkerPayload =
       mode: "restore";
       jobId: string;
       userId: string;
+  provider: ProvisioningProvider;
       snapshotName: string;
       region: string;
       size: string;
@@ -54,6 +59,20 @@ export function getClawmacdoBinaryPath() {
     ".bin",
     process.platform === "win32" ? "clawmacdo.cmd" : "clawmacdo",
   );
+}
+
+export function normalizeProvisioningProvider(value: string | null | undefined): ProvisioningProvider {
+  const normalized = value?.trim().toLowerCase();
+
+  if (normalized === "digitalocean" || normalized === "do") {
+    return "digitalocean";
+  }
+
+  return "lightsail";
+}
+
+export function getProvisioningProviderDisplayName(provider: ProvisioningProvider) {
+  return provider === "digitalocean" ? "DigitalOcean" : "AWS Lightsail";
 }
 
 function getAwsCliCompatConfigPath() {
@@ -134,10 +153,16 @@ function quoteWindowsArgument(value: string) {
 }
 
 export function getProvisioningConfig() {
+  const provider = normalizeProvisioningProvider(process.env.CLAWMACDO_PROVIDER);
+
   return {
+    provider,
     snapshotName: process.env.CLAWMACDO_SNAPSHOT_NAME?.trim() ?? "",
-    region: process.env.AWS_REGION?.trim() || DEFAULT_LIGHTSAIL_REGION,
-    size: process.env.CLAWMACDO_INSTANCE_SIZE?.trim() || DEFAULT_LIGHTSAIL_SIZE,
+    region: provider === "digitalocean"
+      ? process.env.DO_REGION?.trim() || DEFAULT_DIGITALOCEAN_REGION
+      : process.env.AWS_REGION?.trim() || DEFAULT_LIGHTSAIL_REGION,
+    size: process.env.CLAWMACDO_INSTANCE_SIZE?.trim()
+      || (provider === "digitalocean" ? DEFAULT_DIGITALOCEAN_SIZE : DEFAULT_LIGHTSAIL_SIZE),
   };
 }
 
@@ -159,16 +184,23 @@ export function sanitizeProvisioningText(value: string | null | undefined) {
 
 export function getProvisioningReadiness() {
   const missing: string[] = [];
+  const config = getProvisioningConfig();
 
-  if (!process.env.AWS_ACCESS_KEY_ID?.trim()) {
-    missing.push("AWS_ACCESS_KEY_ID");
+  if (config.provider === "digitalocean") {
+    if (!process.env.DO_TOKEN?.trim()) {
+      missing.push("DO_TOKEN");
+    }
+  } else {
+    if (!process.env.AWS_ACCESS_KEY_ID?.trim()) {
+      missing.push("AWS_ACCESS_KEY_ID");
+    }
+
+    if (!process.env.AWS_SECRET_ACCESS_KEY?.trim()) {
+      missing.push("AWS_SECRET_ACCESS_KEY");
+    }
   }
 
-  if (!process.env.AWS_SECRET_ACCESS_KEY?.trim()) {
-    missing.push("AWS_SECRET_ACCESS_KEY");
-  }
-
-  if (!getProvisioningConfig().snapshotName) {
+  if (!config.snapshotName) {
     missing.push("CLAWMACDO_SNAPSHOT_NAME");
   }
 
@@ -403,4 +435,62 @@ export function spawnProvisioningWorker(payload: WorkerPayload) {
   child.unref();
 
   return child.pid ?? null;
+}
+
+export async function verifyDigitalOceanSnapshotExists(snapshotName: string) {
+  const token = process.env.DO_TOKEN?.trim();
+
+  if (!token) {
+    return {
+      ok: false as const,
+      error: "DO_TOKEN is required before NewsClaw can verify the DigitalOcean snapshot.",
+    };
+  }
+
+  try {
+    const response = await fetch("https://api.digitalocean.com/v2/snapshots?resource_type=droplet&per_page=200", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const payload = await response.json().catch(() => null) as
+      | { snapshots?: Array<{ name?: string }>; message?: string }
+      | null;
+
+    if (!response.ok) {
+      return {
+        ok: false as const,
+        error: sanitizeProvisioningText(payload?.message) || `Unable to verify the DigitalOcean snapshot "${snapshotName}".`,
+      };
+    }
+
+    const snapshots = payload?.snapshots ?? [];
+    const hasSnapshot = snapshots.some((snapshot) => snapshot.name?.trim() === snapshotName);
+
+    if (!hasSnapshot) {
+      return {
+        ok: false as const,
+        error: `The DigitalOcean snapshot "${snapshotName}" was not found. Update CLAWMACDO_SNAPSHOT_NAME or DO_TOKEN and try again.`,
+      };
+    }
+
+    return { ok: true as const };
+  } catch (error) {
+    const message = error instanceof Error ? sanitizeProvisioningText(error.message) : "Unable to verify the DigitalOcean snapshot.";
+
+    return {
+      ok: false as const,
+      error: message || `Unable to verify the DigitalOcean snapshot "${snapshotName}".`,
+    };
+  }
+}
+
+export async function verifyProvisioningSnapshotExists(config: ReturnType<typeof getProvisioningConfig>) {
+  if (config.provider === "digitalocean") {
+    return verifyDigitalOceanSnapshotExists(config.snapshotName);
+  }
+
+  return verifyLightsailSnapshotExists(config.snapshotName, config.region);
 }

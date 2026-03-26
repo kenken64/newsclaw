@@ -257,15 +257,25 @@ async function runRestore() {
 
   updateRestoreJob(payload.jobId, { status: "running", error_message: null, worker_pid: process.pid });
 
-  const commandArgs = [
-    "ls-restore",
-    "--snapshot-name",
-    payload.snapshotName,
-    "--region",
-    payload.region,
-    "--size",
-    payload.size,
-  ];
+  const commandArgs = payload.provider === "digitalocean"
+    ? [
+        "do-restore",
+        "--snapshot-name",
+        payload.snapshotName,
+        "--region",
+        payload.region,
+        "--size",
+        payload.size,
+      ]
+    : [
+        "ls-restore",
+        "--snapshot-name",
+        payload.snapshotName,
+        "--region",
+        payload.region,
+        "--size",
+        payload.size,
+      ];
 
   const result = await runCommand(commandArgs, {
     onStdoutLine(line) {

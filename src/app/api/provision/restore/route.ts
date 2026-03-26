@@ -11,7 +11,7 @@ import {
   getProvisioningReadiness,
   serializeRestoreJob,
   spawnProvisioningWorker,
-  verifyLightsailSnapshotExists,
+  verifyProvisioningSnapshotExists,
 } from "@/lib/provisioning";
 import { getCurrentUserFromRequest } from "@/lib/session";
 
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   }
 
   const config = getProvisioningConfig();
-  const snapshotCheck = await verifyLightsailSnapshotExists(config.snapshotName, config.region);
+  const snapshotCheck = await verifyProvisioningSnapshotExists(config);
 
   if (!snapshotCheck.ok) {
     return NextResponse.json({ error: snapshotCheck.error }, { status: 400 });
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 
   const restoreJob = createRestoreJob({
     userId: user.id,
-    provider: "lightsail",
+    provider: config.provider,
     snapshotName: config.snapshotName,
     region: config.region,
     size: config.size,
@@ -78,6 +78,7 @@ export async function POST(request: Request) {
     mode: "restore",
     jobId: restoreJob.id,
     userId: user.id,
+    provider: config.provider,
     snapshotName: restoreJob.snapshotName,
     region: restoreJob.region,
     size: restoreJob.size,

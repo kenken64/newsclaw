@@ -23,9 +23,10 @@ type RestoreJob = {
 type Props = {
   initialRestoreJob: RestoreJob | null;
   missingConfig: string[];
+  providerName: string;
 };
 
-export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Props) {
+export function RestoreInstanceClient({ initialRestoreJob, missingConfig, providerName }: Props) {
   const router = useRouter();
   const [restoreJob, setRestoreJob] = useState<RestoreJob | null>(initialRestoreJob);
   const [busy, setBusy] = useState(false);
@@ -170,7 +171,7 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
         <CardHeader>
           <CardTitle className="text-2xl">Restore OpenClaw workspace</CardTitle>
           <CardDescription className="text-sm leading-6 text-slate-600">
-            NewsClaw uses ClawMacdo to restore the AWS Lightsail snapshot and capture the deployment metadata required for the pairing step.
+            NewsClaw uses ClawMacdo to restore the {providerName} snapshot and capture the deployment metadata required for the pairing step.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
@@ -262,8 +263,8 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig }: Prop
                 <ServerCog className="size-5" />
               </div>
               <div>
-                <p className="font-medium text-white">AWS Lightsail snapshot</p>
-                <p className="mt-1 text-slate-300">The restore runs against the pinned snapshot from the environment and stores the resulting deployment record locally.</p>
+                <p className="font-medium text-white">{providerName} snapshot</p>
+                <p className="mt-1 text-slate-300">The restore runs against the pinned snapshot from the environment-selected provider and stores the resulting deployment record locally.</p>
               </div>
             </div>
           </div>
