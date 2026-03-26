@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import Database from "better-sqlite3";
@@ -27,8 +29,18 @@ fs.mkdirSync(path.dirname(databaseFile), { recursive: true });
 const db = new Database(databaseFile);
 let activeCommandChild = null;
 let shuttingDown = false;
+const OPENCLAW_HOME = "/home/openclaw";
+const QR_GLYPH_PATTERN = /[█▀▄▐▌▖▗▘▙▚▛▜▝▞▟]/u;
+const ANSI_QR_PATTERN = /(\x1b\[[0-9;]*m[ ]{2}){3,}/u;
 
 function getClawmacdoSpawnOptions(commandArgs) {
+  if (process.platform === "win32" && /[\\/]node_modules[\\/]clawmacdo[\\/]bin[\\/]clawmacdo$/i.test(clawmacdoBin)) {
+    return {
+      command: process.execPath,
+      args: [clawmacdoBin, ...commandArgs],
+    };
+  }
+
   if (process.platform === "win32" && /\.cmd$/i.test(clawmacdoBin)) {
     const commandLine = [quoteWindowsArgument(clawmacdoBin), ...commandArgs.map(quoteWindowsArgument)].join(" ");
 
@@ -83,6 +95,244 @@ function quoteWindowsArgument(value) {
 
   quoted += '"';
   return quoted;
+}
+
+function getEncryptionKey(secret) {
+  return crypto.scryptSync(secret, "newsclaw-restore-key", 32);
+}
+
+function decryptSecretValue(payloadValue) {
+  const [version, iv, authTag, encrypted] = String(payloadValue ?? "").split(":");
+
+  if (version !== "v1" || !iv || !authTag || !encrypted) {
+    throw new Error("Encrypted payload format is invalid.");
+  }
+
+  const key = getEncryptionKey(encryptionSecret.trim());
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64"));
+  decipher.setAuthTag(Buffer.from(authTag, "base64"));
+
+  return Buffer.concat([
+    decipher.update(Buffer.from(encrypted, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function shellEscape(value) {
+  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+}
+
+function sshUserForProvider(provider) {
+  return provider === "lightsail" ? "ubuntu" : "root";
+}
+
+function getOpenClawRemoteShell(sshUser) {
+  return sshUser === "root"
+    ? "su - openclaw -s /bin/bash -c '/bin/bash -se'"
+    : "sudo su - openclaw -s /bin/bash -c '/bin/bash -se'";
+}
+
+function getRestoreJobById(jobId) {
+  return db.prepare("SELECT * FROM restore_jobs WHERE id = ?").get(jobId);
+}
+
+function resolveRestoreConnection(restoreJobId) {
+  const restoreJob = getRestoreJobById(restoreJobId);
+
+  if (!restoreJob) {
+    throw new Error("Restore job not found for messaging setup.");
+  }
+
+  const host = restoreJob.ip_address || restoreJob.hostname;
+
+  if (!host) {
+    throw new Error("No SSH host is available for the restored instance.");
+  }
+
+  return {
+    host,
+    provider: restoreJob.provider || "digitalocean",
+    sshKeyPath: restoreJob.ssh_key_path || null,
+    sshPrivateKeyEncrypted: restoreJob.ssh_private_key_encrypted || null,
+  };
+}
+
+function createTemporaryPrivateKeyFile(privateKey) {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "newsclaw-ssh-"));
+  const privateKeyPath = path.join(tempDirectory, "id_rsa");
+  fs.writeFileSync(privateKeyPath, privateKey, { encoding: "utf8", mode: 0o600 });
+  return {
+    privateKeyPath,
+    cleanup() {
+      try {
+        fs.rmSync(tempDirectory, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup failures for temporary SSH material.
+      }
+    },
+  };
+}
+
+function hasScannableQr(output) {
+  return QR_GLYPH_PATTERN.test(output) || ANSI_QR_PATTERN.test(output);
+}
+
+function shouldRetryWhatsAppLogin(output, code) {
+  if (code === 0) {
+    return false;
+  }
+
+  const loweredOutput = String(output || "").toLowerCase();
+
+  return (
+    loweredOutput.includes("session logged out") ||
+    loweredOutput.includes("whatsapp session logged out") ||
+    loweredOutput.includes("cleared whatsapp web credentials") ||
+    loweredOutput.includes("cleared cached web session")
+  );
+}
+
+function hasCompletedWhatsAppLink(output) {
+  const loweredOutput = String(output || "").toLowerCase();
+
+  return (
+    loweredOutput.includes("linked!") ||
+    loweredOutput.includes("whatsapp linked") ||
+    loweredOutput.includes("credentials saved for future sends") ||
+    loweredOutput.includes("credentials saved")
+  );
+}
+
+function getWhatsAppSetupCommand(phoneNumber) {
+  const envFile = `${OPENCLAW_HOME}/.openclaw/.env`;
+  const pathValue = `${OPENCLAW_HOME}/.local/bin:${OPENCLAW_HOME}/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin`;
+
+  return [
+    `PHONE=${shellEscape(phoneNumber)}`,
+    `ENV_FILE=${shellEscape(envFile)}`,
+    `if grep -q '^WHATSAPP_PHONE_NUMBER=' "$ENV_FILE" 2>/dev/null; then sed -i "s|^WHATSAPP_PHONE_NUMBER=.*|WHATSAPP_PHONE_NUMBER=${"$"}PHONE|" "$ENV_FILE"; else printf 'WHATSAPP_PHONE_NUMBER=%s\\n' "${"$"}PHONE" >> "$ENV_FILE"; fi`,
+    'chmod 600 "$ENV_FILE"',
+    `export PATH=${shellEscape(pathValue)}`,
+    `export HOME=${shellEscape(OPENCLAW_HOME)}`,
+    '(openclaw plugins enable whatsapp 2>&1 || true)',
+    'export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus',
+    '(systemctl --user daemon-reload 2>/dev/null || true)',
+    '(systemctl --user restart openclaw-gateway.service 2>/dev/null || systemctl --user start openclaw-gateway.service 2>/dev/null || true)',
+    'sleep 2',
+    "echo -n 'gateway: '",
+    '(systemctl --user is-active openclaw-gateway.service 2>/dev/null || true)',
+  ].join('; ');
+}
+
+function getWhatsAppQrFetchCommand() {
+  return [
+    `export PATH=${shellEscape(`${OPENCLAW_HOME}/.local/bin:${OPENCLAW_HOME}/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin`)}`,
+    `export HOME=${shellEscape(OPENCLAW_HOME)}`,
+    "export XDG_RUNTIME_DIR=/run/user/$(id -u) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus",
+    "pkill -f 'openclaw channels login' 2>/dev/null || true",
+    "sleep 0.3",
+    "QF=/tmp/wa_qr_$$.txt",
+    `nohup script -q -f -c ${shellEscape("TERM=dumb NO_COLOR=1 FORCE_COLOR=0 timeout 90s openclaw channels login --channel whatsapp")} \"$QF\" >/dev/null 2>&1 &`,
+    "for I in $(seq 1 30); do sleep 0.5; SZ=$(wc -c <\"$QF\" 2>/dev/null || echo 0); [ \"$SZ\" -ge 1000 ] && break; done",
+    "sleep 0.5",
+    "cat \"$QF\" 2>/dev/null | tr -d '\\r' || echo 'QR not ready'",
+  ].join("\n");
+}
+
+function runSshCommand({ host, sshUser, keyPath, remoteCommand, stdinScript }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("ssh", [
+      "-i",
+      keyPath,
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-o",
+      "ConnectTimeout=30",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "LogLevel=ERROR",
+      `${sshUser}@${host}`,
+      remoteCommand,
+    ], {
+      cwd: workspaceRoot,
+      windowsHide: true,
+      env: {
+        ...process.env,
+      },
+    });
+
+    activeCommandChild = child;
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    if (stdinScript) {
+      child.stdin.end(stdinScript);
+    } else {
+      child.stdin.end();
+    }
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      activeCommandChild = null;
+      resolve({ code: code ?? 0, stdout, stderr });
+    });
+  });
+}
+
+async function fetchWhatsAppQrWithRetry(connection) {
+  const firstAttempt = await runSshCommand({
+    ...connection,
+    remoteCommand: getOpenClawRemoteShell(connection.sshUser),
+    stdinScript: getWhatsAppQrFetchCommand(),
+  });
+
+  const firstOutput = `${firstAttempt.stdout || ""}${firstAttempt.stderr ? `\n${firstAttempt.stderr}` : ""}`.trim();
+
+  if (!shouldRetryWhatsAppLogin(firstOutput, firstAttempt.code)) {
+    return firstAttempt;
+  }
+
+  return runSshCommand({
+    ...connection,
+    remoteCommand: getOpenClawRemoteShell(connection.sshUser),
+    stdinScript: getWhatsAppQrFetchCommand(),
+  });
+}
+
+async function withRestoreSshConnection(restoreJobId, callback) {
+  const connection = resolveRestoreConnection(restoreJobId);
+  let temporaryKey = null;
+  let keyPath = connection.sshKeyPath;
+
+  if (!keyPath || !fs.existsSync(keyPath)) {
+    if (!connection.sshPrivateKeyEncrypted) {
+      throw new Error("No SSH private key is available for the restored instance.");
+    }
+
+    temporaryKey = createTemporaryPrivateKeyFile(decryptSecretValue(connection.sshPrivateKeyEncrypted));
+    keyPath = temporaryKey.privateKeyPath;
+  }
+
+  try {
+    return await callback({
+      host: connection.host,
+      sshUser: sshUserForProvider(connection.provider),
+      keyPath,
+    });
+  } finally {
+    temporaryKey?.cleanup();
+  }
 }
 
 function isRestoreCanceled(jobId) {
@@ -395,19 +645,41 @@ async function runMessagingSetup(mode) {
     error_message: null,
   });
 
-  const commandArgs =
-    mode === "telegram-setup"
-      ? ["telegram-setup", "--instance", payload.instance, "--bot-token", payload.telegramBotToken]
-      : mode === "whatsapp-setup"
-        ? ["whatsapp-setup", "--instance", payload.instance, "--phone-number", payload.phoneNumber]
-        : ["whatsapp-qr", "--instance", payload.instance];
+  let result;
 
-  const result = await runCommand(commandArgs, {
-    onStdoutLine() {},
-    onStderrLine() {},
-  });
+  if (mode === "telegram-setup") {
+    result = await runCommand(["telegram-setup", "--instance", payload.instance, "--bot-token", payload.telegramBotToken], {
+      onStdoutLine() {},
+      onStderrLine() {},
+    });
+  } else if (mode === "whatsapp-setup") {
+    await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
+      const setupResult = await runSshCommand({
+        ...connection,
+        remoteCommand: getOpenClawRemoteShell(connection.sshUser),
+        stdinScript: getWhatsAppSetupCommand(payload.phoneNumber ?? ""),
+      });
+
+      if (setupResult.code !== 0) {
+        throw new Error((setupResult.stderr || setupResult.stdout || "Unable to configure WhatsApp on the restored instance.").trim());
+      }
+    });
+
+    result = await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
+      return fetchWhatsAppQrWithRetry(connection);
+    });
+  } else {
+    result = await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
+      return fetchWhatsAppQrWithRetry(connection);
+    });
+  }
+
+  const combinedOutput = `${result.stdout || ""}${result.stderr ? `\n${result.stderr}` : ""}`.trim();
+  const loweredOutput = combinedOutput.toLowerCase();
 
   if (result.code !== 0) {
+    const failureMessage = (result.stderr || result.stdout || `Messaging pairing command exited with code ${result.code}.`).trim();
+
     upsertMessagingPairing({
       user_id: payload.userId,
       restore_job_id: payload.restoreJobId,
@@ -415,10 +687,54 @@ async function runMessagingSetup(mode) {
       status: "failed",
       qr_output: result.stdout.trim(),
       instruction_text: result.stdout.trim(),
-      error_message: (result.stderr || result.stdout || "Unable to start the messaging pairing flow.").trim(),
+      error_message: failureMessage,
       last_updated_at: now(),
     });
     return;
+  }
+
+  if (payload.channel === "whatsapp") {
+    if (loweredOutput.includes("unsupported channel: whatsapp") || loweredOutput.includes("unsupported channel whatsapp")) {
+      upsertMessagingPairing({
+        user_id: payload.userId,
+        restore_job_id: payload.restoreJobId,
+        channel: payload.channel,
+        status: "failed",
+        qr_output: combinedOutput,
+        instruction_text: "WhatsApp channel unsupported on this instance. Repair or enable the plugin first.",
+        error_message: "WhatsApp channel unsupported on this instance. Repair or enable the plugin first.",
+        last_updated_at: now(),
+      });
+      return;
+    }
+
+    if (hasCompletedWhatsAppLink(combinedOutput)) {
+      upsertMessagingPairing({
+        user_id: payload.userId,
+        restore_job_id: payload.restoreJobId,
+        channel: payload.channel,
+        status: "completed",
+        qr_output: combinedOutput,
+        instruction_text: "WhatsApp is linked and ready for NewsClaw.",
+        error_message: null,
+        last_updated_at: now(),
+      });
+      return;
+    }
+
+    if (!hasScannableQr(combinedOutput)) {
+      upsertMessagingPairing({
+        user_id: payload.userId,
+        restore_job_id: payload.restoreJobId,
+        channel: payload.channel,
+        status: "failed",
+        qr_output: combinedOutput,
+        instruction_text: combinedOutput || "No scannable WhatsApp QR code was returned.",
+        error_message: "No scannable WhatsApp QR code was returned. Refresh and try again.",
+        last_updated_at: now(),
+      });
+      return;
+    }
   }
 
   upsertMessagingPairing({
@@ -426,7 +742,7 @@ async function runMessagingSetup(mode) {
     restore_job_id: payload.restoreJobId,
     channel: payload.channel,
     status: mode === "telegram-setup" ? "awaiting_code" : "qr_ready",
-    qr_output: mode === "telegram-setup" ? "" : result.stdout.trim(),
+    qr_output: mode === "telegram-setup" ? "" : combinedOutput,
     instruction_text: mode === "telegram-setup" ? result.stdout.trim() : "Scan the QR code with WhatsApp to complete pairing.",
     error_message: null,
     last_updated_at: now(),

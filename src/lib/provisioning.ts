@@ -1,6 +1,7 @@
 import "server-only";
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
@@ -53,11 +54,21 @@ export function getClawmacdoBinaryPath() {
     return process.env.CLAWMACDO_BIN.trim();
   }
 
+  if (process.platform === "win32") {
+    return path.join(
+      /* turbopackIgnore: true */ process.cwd(),
+      "node_modules",
+      "clawmacdo",
+      "bin",
+      "clawmacdo",
+    );
+  }
+
   return path.join(
     /* turbopackIgnore: true */ process.cwd(),
     "node_modules",
     ".bin",
-    process.platform === "win32" ? "clawmacdo.cmd" : "clawmacdo",
+    "clawmacdo",
   );
 }
 
@@ -96,6 +107,13 @@ function getAwsCliCompatConfigPath() {
 }
 
 function getSpawnOptions(command: string, commandArgs: string[]) {
+  if (process.platform === "win32" && /[\\/]node_modules[\\/]clawmacdo[\\/]bin[\\/]clawmacdo$/i.test(command)) {
+    return {
+      command: process.execPath,
+      args: [command, ...commandArgs],
+    };
+  }
+
   if (process.platform === "win32" && /\.(cmd|bat)$/i.test(command)) {
     const commandLine = [quoteWindowsArgument(command), ...commandArgs.map(quoteWindowsArgument)].join(" ");
 
@@ -332,6 +350,166 @@ export async function getTelegramChatIdFromInstance(instance: string) {
   }
 
   return chatIdMatch[1];
+}
+
+function shellEscape(value: string) {
+  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+}
+
+function sshUserForProvider(provider: string | null | undefined) {
+  return provider === "lightsail" ? "ubuntu" : "root";
+}
+
+function getOpenClawRemoteShell(sshUser: string) {
+  return sshUser === "root"
+    ? "su - openclaw -s /bin/bash -c '/bin/bash -se'"
+    : "sudo su - openclaw -s /bin/bash -c '/bin/bash -se'";
+}
+
+function createTemporaryPrivateKeyFile(privateKey: string) {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "newsclaw-ssh-"));
+  const privateKeyPath = path.join(tempDirectory, "id_rsa");
+  fs.writeFileSync(privateKeyPath, privateKey, { encoding: "utf8", mode: 0o600 });
+
+  return {
+    privateKeyPath,
+    cleanup() {
+      try {
+        fs.rmSync(tempDirectory, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup failures for temporary SSH material.
+      }
+    },
+  };
+}
+
+function getBestChannelRecipient(rawSessions: string, channel: "whatsapp" | "telegram") {
+  const parsed = JSON.parse(rawSessions.trim() || "{}") as Record<string, {
+    lastChannel?: string;
+    lastTo?: string;
+    updatedAt?: number;
+  }>;
+
+  let bestRecipient: { updatedAt: number; recipient: string } | null = null;
+
+  for (const session of Object.values(parsed)) {
+    if (session?.lastChannel !== channel) {
+      continue;
+    }
+
+    const lastTo = typeof session.lastTo === "string" ? session.lastTo : "";
+    const recipient = lastTo.replace(new RegExp(`^${channel}:`, "u"), "").trim();
+
+    if (!recipient) {
+      continue;
+    }
+
+    const updatedAt = typeof session.updatedAt === "number" ? session.updatedAt : 0;
+
+    if (!bestRecipient || updatedAt > bestRecipient.updatedAt) {
+      bestRecipient = { updatedAt, recipient };
+    }
+  }
+
+  return bestRecipient?.recipient ?? null;
+}
+
+async function runSshCommand(command: string, commandArgs: string[], stdinScript?: string) {
+  return new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    const spawnOptions = getSpawnOptions(command, commandArgs);
+
+    const child = spawn(spawnOptions.command, spawnOptions.args, {
+      cwd: /* turbopackIgnore: true */ process.cwd(),
+      windowsHide: true,
+      env: {
+        ...process.env,
+        AWS_CONFIG_FILE: getAwsCliCompatConfigPath(),
+      },
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    if (stdinScript) {
+      child.stdin.end(stdinScript);
+    } else {
+      child.stdin.end();
+    }
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      resolve({ code: code ?? 0, stdout, stderr });
+    });
+  });
+}
+
+export async function getLatestChannelRecipientFromRestoreJob(
+  restoreJob: RestoreJobRecord,
+  channel: "whatsapp" | "telegram",
+  sshPrivateKey?: string,
+) {
+  const host = restoreJob.ipAddress || restoreJob.hostname;
+
+  if (!host) {
+    throw new Error("No SSH host is available for the restored instance.");
+  }
+
+  let keyPath = restoreJob.sshKeyPath;
+  let temporaryKey: ReturnType<typeof createTemporaryPrivateKeyFile> | null = null;
+
+  if (!keyPath || !fs.existsSync(keyPath)) {
+    if (!sshPrivateKey) {
+      throw new Error("No SSH private key is available for the restored instance.");
+    }
+
+    temporaryKey = createTemporaryPrivateKeyFile(sshPrivateKey);
+    keyPath = temporaryKey.privateKeyPath;
+  }
+
+  try {
+    const sshUser = sshUserForProvider(restoreJob.provider);
+    const remoteShell = getOpenClawRemoteShell(sshUser);
+    const sessionsCommand = `cat ${shellEscape("/home/openclaw/.openclaw/agents/main/sessions/sessions.json")} 2>/dev/null || echo '{}'`;
+    const result = await runSshCommand("ssh", [
+      "-i",
+      keyPath,
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-o",
+      "ConnectTimeout=15",
+      "-o",
+      "ServerAliveInterval=15",
+      "-o",
+      "LogLevel=ERROR",
+      `${sshUser}@${host}`,
+      remoteShell,
+    ], `${sessionsCommand}\n`);
+
+    if (result.code !== 0) {
+      const details = sanitizeProvisioningText(result.stderr || result.stdout);
+      throw new Error(details || `Unable to inspect the ${channel} session state on the restored instance.`);
+    }
+
+    return getBestChannelRecipient(result.stdout, channel);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`Unable to parse the restored instance ${channel} session state.`);
+    }
+
+    throw error;
+  } finally {
+    temporaryKey?.cleanup();
+  }
 }
 
 function runExternalCommand(command: string, commandArgs: string[]) {

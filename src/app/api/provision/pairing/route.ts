@@ -8,6 +8,7 @@ import {
 } from "@/lib/db";
 import { decryptSecretValue } from "@/lib/secrets";
 import {
+  getLatestChannelRecipientFromRestoreJob,
   getRestoreInstanceIdentifier,
   getPairingReadiness,
   sanitizeProvisioningText,
@@ -16,6 +17,20 @@ import {
   spawnProvisioningWorker,
 } from "@/lib/provisioning";
 import { getCurrentUserFromRequest } from "@/lib/session";
+
+const WHATSAPP_COMPLETION_CHECK_INTERVAL_MS = 10_000;
+const lastWhatsAppCompletionCheckAt = new Map<string, number>();
+
+function hasCompletedWhatsAppLink(output: string | null | undefined) {
+  const loweredOutput = String(output || "").toLowerCase();
+
+  return (
+    loweredOutput.includes("linked!") ||
+    loweredOutput.includes("whatsapp linked") ||
+    loweredOutput.includes("credentials saved for future sends") ||
+    loweredOutput.includes("credentials saved")
+  );
+}
 
 export async function GET(request: Request) {
   const user = getCurrentUserFromRequest(request);
@@ -26,7 +41,64 @@ export async function GET(request: Request) {
 
   const restoreJob = getLatestRestoreJobByUserId(user.id);
   const channelConfig = getUserChannelConfigByUserId(user.id);
-  const pairing = getMessagingPairingByUserId(user.id);
+  let pairing = getMessagingPairingByUserId(user.id);
+  const now = Date.now();
+
+  if (
+    restoreJob &&
+    pairing &&
+    pairing.restoreJobId === restoreJob.id &&
+    pairing.channel === "whatsapp" &&
+    pairing.status !== "completed" &&
+    (hasCompletedWhatsAppLink(pairing.qrOutput) || hasCompletedWhatsAppLink(pairing.instructionText))
+  ) {
+    pairing = upsertMessagingPairing({
+      userId: user.id,
+      restoreJobId: restoreJob.id,
+      channel: "whatsapp",
+      status: "completed",
+      instructionText: "WhatsApp is linked and ready for NewsClaw.",
+      errorMessage: null,
+      lastUpdatedAt: new Date().toISOString(),
+    });
+  }
+
+  if (
+    restoreJob &&
+    pairing &&
+    pairing.restoreJobId === restoreJob.id &&
+    pairing.channel === "whatsapp" &&
+    pairing.status === "qr_ready" &&
+    pairing.qrOutput.trim().length > 0 &&
+    now - (lastWhatsAppCompletionCheckAt.get(user.id) ?? 0) >= WHATSAPP_COMPLETION_CHECK_INTERVAL_MS
+  ) {
+    lastWhatsAppCompletionCheckAt.set(user.id, now);
+
+    try {
+      const sshPrivateKey = restoreJob.sshPrivateKeyEncrypted
+        ? decryptSecretValue(restoreJob.sshPrivateKeyEncrypted)
+        : undefined;
+      const whatsappRecipient = await getLatestChannelRecipientFromRestoreJob(restoreJob, "whatsapp", sshPrivateKey);
+
+      if (whatsappRecipient) {
+        pairing = upsertMessagingPairing({
+          userId: user.id,
+          restoreJobId: restoreJob.id,
+          channel: "whatsapp",
+          status: "completed",
+          instructionText: `WhatsApp is linked and ready for delivery to ${whatsappRecipient}.`,
+          errorMessage: null,
+          lastUpdatedAt: new Date().toISOString(),
+        });
+        lastWhatsAppCompletionCheckAt.delete(user.id);
+      }
+    } catch (error) {
+      console.error(
+        "[pairing] Failed to verify WhatsApp completion:",
+        error instanceof Error ? sanitizeProvisioningText(error.message) : error,
+      );
+    }
+  }
 
   return NextResponse.json({
     restoreJob: serializeRestoreJob(restoreJob),
