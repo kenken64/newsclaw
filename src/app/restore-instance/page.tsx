@@ -46,6 +46,7 @@ export default async function RestoreInstancePage() {
           initialRestoreJob={serializeRestoreJob(restoreJob)}
           missingConfig={getProvisioningReadiness()}
           providerName={providerName}
+          userEmail={user.email}
         />
       </div>
     </main>

@@ -22,6 +22,27 @@ const requestSchema = z.object({
   code: z.string().trim().min(4).max(128),
 });
 
+const TELEGRAM_PAIRING_SUCCESS_MESSAGE = "Telegram pairing approved. Send a message to your bot to start chatting.";
+
+function sanitizeTelegramPairingOutput(value: string | null | undefined) {
+  const sanitized = sanitizeProvisioningText(value)
+    .replace(/\x1b\[[0-9;]*m/gu, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^Approving Telegram pairing code\b/iu.test(line))
+    .filter((line) => !/^\[plugins\]/iu.test(line))
+    .filter((line) => !/^\[telegram\]/iu.test(line))
+    .filter((line) => !/^\[moltguard\]/iu.test(line))
+    .filter((line) => !/plugins\.allow is empty/iu.test(line))
+    .filter((line) => !/OpenGuardrails dashboard started/iu.test(line))
+    .filter((line) => !/Gateway port .* is still in use after waiting/iu.test(line))
+    .join("\n")
+    .trim();
+
+  return sanitized;
+}
+
 export async function POST(request: Request) {
   const user = getCurrentUserFromRequest(request);
 
@@ -56,7 +77,7 @@ export async function POST(request: Request) {
       body.code,
     ]);
 
-    const details = sanitizeProvisioningText(result.stderr || result.stdout || "Telegram pairing failed.");
+    const details = sanitizeTelegramPairingOutput(result.stderr || result.stdout || "Telegram pairing failed.") || "Telegram pairing failed.";
 
     if (result.code !== 0) {
       if (/No pending pairing request found for code:/iu.test(details)) {
@@ -100,7 +121,7 @@ export async function POST(request: Request) {
         restoreJobId: restoreJob.id,
         channel: "telegram",
         status: "failed",
-        instructionText: sanitizeProvisioningText(result.stdout),
+        instructionText: sanitizeTelegramPairingOutput(result.stdout) || "Telegram pairing failed.",
         pairingCode: body.code,
         errorMessage: details,
         lastUpdatedAt: new Date().toISOString(),
@@ -114,7 +135,7 @@ export async function POST(request: Request) {
       restoreJobId: restoreJob.id,
       channel: "telegram",
       status: "completed",
-      instructionText: sanitizeProvisioningText(result.stdout),
+      instructionText: TELEGRAM_PAIRING_SUCCESS_MESSAGE,
       pairingCode: body.code,
       errorMessage: null,
       lastUpdatedAt: new Date().toISOString(),

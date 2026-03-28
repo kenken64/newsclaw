@@ -857,6 +857,38 @@ export function createDailyDigestSchedule(input: {
   return record;
 }
 
+export function updateDailyDigestSchedule(id: string, input: {
+  timeSgt?: string;
+  timeUtc?: string;
+  jobName?: string;
+  deliveryChannel?: "whatsapp" | "telegram";
+  deliveryTarget?: string;
+  promptText?: string;
+}) {
+  const existing = getDailyDigestScheduleById(id);
+
+  if (!existing) {
+    return null;
+  }
+
+  db.prepare(
+    `UPDATE daily_digest_schedules
+     SET time_sgt = ?, time_utc = ?, job_name = ?, delivery_channel = ?, delivery_target = ?, prompt_text = ?, updated_at = ?
+     WHERE id = ?`
+  ).run(
+    input.timeSgt ?? existing.timeSgt,
+    input.timeUtc ?? existing.timeUtc,
+    input.jobName ?? existing.jobName,
+    input.deliveryChannel ?? existing.deliveryChannel,
+    input.deliveryTarget === undefined ? existing.deliveryTarget : input.deliveryTarget.trim(),
+    input.promptText ?? existing.promptText,
+    new Date().toISOString(),
+    id,
+  );
+
+  return getDailyDigestScheduleById(id);
+}
+
 export function deleteDailyDigestSchedule(id: string) {
   db.prepare("DELETE FROM daily_digest_schedules WHERE id = ?").run(id);
 }

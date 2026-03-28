@@ -30,6 +30,15 @@ const db = new Database(databaseFile);
 let activeCommandChild = null;
 let shuttingDown = false;
 const OPENCLAW_HOME = "/home/openclaw";
+const RESTORE_PLUGIN_NAME = "@openguardrails/moltguard";
+const RESTORE_PLUGIN_INSTALL_DELAY_MS = Math.max(
+  0,
+  Number.parseInt(process.env.NEWSCLAW_RESTORE_PLUGIN_INSTALL_DELAY_MS ?? "15000", 10) || 15000,
+);
+const PAIRING_RESET_DELAY_MS = Math.max(
+  0,
+  Number.parseInt(process.env.NEWSCLAW_PAIRING_RESET_DELAY_MS ?? "3000", 10) || 3000,
+);
 const QR_GLYPH_PATTERN = /[█▀▄▐▌▖▗▘▙▚▛▜▝▞▟]/u;
 const ANSI_QR_PATTERN = /(\x1b\[[0-9;]*m[ ]{2}){3,}/u;
 
@@ -344,6 +353,12 @@ function now() {
   return new Date().toISOString();
 }
 
+function sleep(delayMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
 function appendRestoreOutput(jobId, chunk) {
   db.prepare(
     "UPDATE restore_jobs SET raw_output = COALESCE(raw_output, '') || ?, updated_at = ? WHERE id = ?",
@@ -496,6 +511,30 @@ function runCommand(commandArgs, handlers) {
   });
 }
 
+async function runPairingReset(mode) {
+  if (mode !== "telegram-setup" && mode !== "whatsapp-setup") {
+    return;
+  }
+
+  const resetCommandArgs = mode === "telegram-setup"
+    ? ["telegram-reset", "--instance", payload.instance]
+    : ["whatsapp-reset", "--instance", payload.instance];
+  const resetLabel = mode === "telegram-setup" ? "Telegram" : "WhatsApp";
+
+  const resetResult = await runCommand(resetCommandArgs, {
+    onStdoutLine() {},
+    onStderrLine() {},
+  });
+
+  if (resetResult.code !== 0) {
+    throw new Error(
+      (resetResult.stderr || resetResult.stdout || `Unable to reset ${resetLabel} pairing state.`).trim(),
+    );
+  }
+
+  await sleep(PAIRING_RESET_DELAY_MS);
+}
+
 async function runRestore() {
   const metadata = {
     deploy_id: null,
@@ -504,6 +543,7 @@ async function runRestore() {
     ssh_key_path: null,
     ssh_private_key_encrypted: null,
   };
+  const totalSteps = 6;
 
   updateRestoreJob(payload.jobId, { status: "running", error_message: null, worker_pid: process.pid });
 
@@ -537,7 +577,7 @@ async function runRestore() {
         updateRestoreJob(payload.jobId, {
           status: "running",
           current_step: Number(stepMatch[1]),
-          total_steps: Number(stepMatch[2]),
+          total_steps: totalSteps,
           step_label: stepMatch[3].trim(),
         });
       }
@@ -584,6 +624,62 @@ async function runRestore() {
     return;
   }
 
+  if (!metadata.deploy_id) {
+    updateRestoreJob(payload.jobId, {
+      status: "failed",
+      current_step: 5,
+      total_steps: totalSteps,
+      step_label: "Plugin installation failed",
+      worker_pid: null,
+      error_message: "Restore completed but no deploy ID was returned, so the MoltGuard plugin could not be installed.",
+      completed_at: now(),
+    });
+    return;
+  }
+
+  updateRestoreJob(payload.jobId, {
+    status: "running",
+    current_step: 6,
+    total_steps: totalSteps,
+    step_label: `Installing plugin ${RESTORE_PLUGIN_NAME}`,
+  });
+  if (RESTORE_PLUGIN_INSTALL_DELAY_MS > 0) {
+    appendRestoreOutput(
+      payload.jobId,
+      `[step] Waiting ${RESTORE_PLUGIN_INSTALL_DELAY_MS}ms before plugin installation\n`,
+    );
+    await sleep(RESTORE_PLUGIN_INSTALL_DELAY_MS);
+  }
+  appendRestoreOutput(payload.jobId, `[step] Installing plugin ${RESTORE_PLUGIN_NAME}\n`);
+
+  const pluginInstallResult = await runCommand([
+    "plugin-install",
+    "--instance",
+    metadata.deploy_id,
+    "--plugin",
+    RESTORE_PLUGIN_NAME,
+  ], {
+    onStdoutLine(line) {
+      appendRestoreOutput(payload.jobId, `[plugin] ${line}\n`);
+    },
+    onStderrLine(line) {
+      appendRestoreOutput(payload.jobId, `[plugin][stderr] ${line}\n`);
+    },
+  });
+
+  if (pluginInstallResult.code !== 0) {
+    updateRestoreJob(payload.jobId, {
+      status: "failed",
+      current_step: 6,
+      total_steps: totalSteps,
+      step_label: "Plugin installation failed",
+      worker_pid: null,
+      error_message: (pluginInstallResult.stderr || pluginInstallResult.stdout || `Plugin installation failed for ${RESTORE_PLUGIN_NAME}.`).trim(),
+      completed_at: now(),
+    });
+    return;
+  }
+
   if (metadata.ssh_key_path) {
     const privateKey = fs.readFileSync(metadata.ssh_key_path, "utf8");
     metadata.ssh_private_key_encrypted = encryptPrivateKey(privateKey, encryptionSecret);
@@ -591,8 +687,8 @@ async function runRestore() {
 
   updateRestoreJob(payload.jobId, {
     status: "completed",
-    current_step: 5,
-    total_steps: 5,
+    current_step: totalSteps,
+    total_steps: totalSteps,
     step_label: "Restore complete",
     deploy_id: metadata.deploy_id,
     hostname: metadata.hostname,
@@ -648,11 +744,15 @@ async function runMessagingSetup(mode) {
   let result;
 
   if (mode === "telegram-setup") {
+    await runPairingReset(mode);
+
     result = await runCommand(["telegram-setup", "--instance", payload.instance, "--bot-token", payload.telegramBotToken], {
       onStdoutLine() {},
       onStderrLine() {},
     });
   } else if (mode === "whatsapp-setup") {
+    await runPairingReset(mode);
+
     await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
       const setupResult = await runSshCommand({
         ...connection,

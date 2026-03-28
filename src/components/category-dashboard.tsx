@@ -83,6 +83,9 @@ export function CategoryDashboard({
   const [digestBusy, setDigestBusy] = useState(false);
   const [digestSchedules, setDigestSchedules] = useState<DailyDigestSchedule[]>(initialDailyDigestSchedules);
   const [digestRemovingId, setDigestRemovingId] = useState<string | null>(null);
+  const [digestEditingId, setDigestEditingId] = useState<string | null>(null);
+  const [digestEditingTime, setDigestEditingTime] = useState("");
+  const [digestUpdatingId, setDigestUpdatingId] = useState<string | null>(null);
   const [telegramChatIdBusy, setTelegramChatIdBusy] = useState(false);
   const [liveCronLines, setLiveCronLines] = useState<string[]>([]);
   const [liveCronRecords, setLiveCronRecords] = useState<LiveCronRecord[]>([]);
@@ -298,6 +301,49 @@ export function CategoryDashboard({
     }
   }
 
+  async function updateDailyDigestScheduleTime(scheduleId: string) {
+    setDigestUpdatingId(scheduleId);
+    setDigestError(null);
+    setDigestSuccess(null);
+
+    try {
+      const response = await fetch("/api/daily-digest", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: scheduleId, time: digestEditingTime }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        updatedTime?: string;
+        updatedUtcTime?: string;
+        schedules?: DailyDigestSchedule[];
+        liveCronLines?: string[];
+        liveCronRecords?: LiveCronRecord[];
+        liveCronOutput?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to update the daily digest time.");
+      }
+
+      setDigestSchedules(payload.schedules ?? []);
+      setLiveCronLines(payload.liveCronLines ?? []);
+      setLiveCronRecords(payload.liveCronRecords ?? []);
+      setLiveCronOutput(payload.liveCronOutput ?? "No cron jobs.");
+      setDigestEditingId(null);
+      setDigestEditingTime("");
+      setDigestSuccess(
+        `Daily digest updated to ${payload.updatedTime ?? digestEditingTime} SGT (${payload.updatedUtcTime ?? digestEditingTime} UTC).`
+      );
+    } catch (caughtError) {
+      setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to update the daily digest time.");
+    } finally {
+      setDigestUpdatingId(null);
+    }
+  }
+
   function handleDigestPromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
@@ -420,23 +466,82 @@ export function CategoryDashboard({
                 {digestSchedules.length > 0 ? digestSchedules.map((schedule) => (
                   <div key={schedule.id} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <div className="min-w-0">
-                      <p className="font-medium text-slate-950">{schedule.time} SGT</p>
+                      {digestEditingId === schedule.id ? (
+                        <div className="grid gap-2">
+                          <Label htmlFor={`digest-edit-${schedule.id}`} className="text-xs text-slate-700">Schedule time</Label>
+                          <Input
+                            id={`digest-edit-${schedule.id}`}
+                            type="time"
+                            value={digestEditingTime}
+                            onChange={(event) => setDigestEditingTime(event.target.value)}
+                            disabled={digestUpdatingId === schedule.id || digestBusy}
+                            className="h-9 w-40 border-slate-200 bg-white text-slate-950"
+                          />
+                        </div>
+                      ) : (
+                        <p className="font-medium text-slate-950">{schedule.time} SGT</p>
+                      )}
                       <p className="text-xs text-slate-500">{schedule.utcTime} UTC</p>
                       <p className="text-xs text-slate-500">
                         {schedule.deliveryChannel === "telegram" ? "Telegram" : "WhatsApp"}: {schedule.deliveryTarget || "Legacy target"}
                       </p>
                       {schedule.promptText ? <p className="mt-2 text-xs leading-5 text-slate-600">{schedule.promptText}</p> : null}
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void removeDailyDigestSchedule(schedule.id)}
-                      disabled={digestRemovingId === schedule.id || digestBusy}
-                      className="h-9 rounded-2xl border-slate-200 bg-white px-3 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
-                    >
-                      {digestRemovingId === schedule.id ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                      Remove
-                    </Button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      {digestEditingId === schedule.id ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void updateDailyDigestScheduleTime(schedule.id)}
+                            disabled={digestUpdatingId === schedule.id || digestBusy || !digestEditingTime}
+                            className="h-9 rounded-2xl border-slate-200 bg-white px-3 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+                          >
+                            {digestUpdatingId === schedule.id ? <LoaderCircle className="size-4 animate-spin" /> : <Clock3 className="size-4" />}
+                            Save time
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              setDigestEditingId(null);
+                              setDigestEditingTime("");
+                            }}
+                            disabled={digestUpdatingId === schedule.id || digestBusy}
+                            className="h-9 rounded-2xl border-slate-200 bg-white px-3 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+                          >
+                            <X className="size-4" />
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setDigestEditingId(schedule.id);
+                            setDigestEditingTime(schedule.time);
+                            setDigestError(null);
+                            setDigestSuccess(null);
+                          }}
+                          disabled={digestBusy || digestRemovingId === schedule.id}
+                          className="h-9 rounded-2xl border-slate-200 bg-white px-3 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+                        >
+                          <Clock3 className="size-4" />
+                          Edit time
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void removeDailyDigestSchedule(schedule.id)}
+                        disabled={digestRemovingId === schedule.id || digestBusy || digestEditingId === schedule.id}
+                        className="h-9 rounded-2xl border-slate-200 bg-white px-3 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+                      >
+                        {digestRemovingId === schedule.id ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 )) : (
                   <p className="rounded-2xl border border-dashed border-slate-200 px-3 py-4 text-slate-500">
@@ -548,8 +653,8 @@ export function CategoryDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {liveCronRecords.map((record) => (
-                        <tr key={record.id} className="border-t border-white/10 align-top">
+                      {liveCronRecords.map((record, index) => (
+                        <tr key={`${record.id}-${record.name}-${index}`} className="border-t border-white/10 align-top">
                           <td className="px-4 py-3 font-mono text-xs text-slate-400">{record.id}</td>
                           <td className="px-4 py-3">
                             <p className="max-w-[220px] truncate font-medium text-white">{record.name}</p>

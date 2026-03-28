@@ -24,9 +24,10 @@ type Props = {
   initialRestoreJob: RestoreJob | null;
   missingConfig: string[];
   providerName: string;
+  userEmail: string;
 };
 
-export function RestoreInstanceClient({ initialRestoreJob, missingConfig, providerName }: Props) {
+export function RestoreInstanceClient({ initialRestoreJob, missingConfig, providerName, userEmail }: Props) {
   const router = useRouter();
   const [restoreJob, setRestoreJob] = useState<RestoreJob | null>(initialRestoreJob);
   const [busy, setBusy] = useState(false);
@@ -173,6 +174,9 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig, provid
           <CardDescription className="text-sm leading-6 text-slate-600">
             NewsClaw uses ClawMacdo to restore the {providerName} snapshot and capture the deployment metadata required for the pairing step.
           </CardDescription>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            Restoring workspace for <span className="font-medium text-slate-950">{userEmail}</span>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-5">
           {missingConfig.length > 0 ? (
@@ -267,6 +271,11 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig, provid
                 <p className="mt-1 text-slate-300">The restore runs against the pinned snapshot from the environment-selected provider and stores the resulting deployment record locally.</p>
               </div>
             </div>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Account</p>
+            <p className="mt-3 text-base font-medium text-white">{userEmail}</p>
+            <p className="mt-1 text-slate-300">This restored workspace will be attached to this signed-in NewsClaw user.</p>
           </div>
           <p>Once the restore reaches 100%, NewsClaw moves into the user-specific pairing step automatically.</p>
         </CardContent>

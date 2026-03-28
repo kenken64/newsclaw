@@ -9,6 +9,7 @@ import {
   getDailyDigestSchedulesByUserId,
   getLatestRestoreJobByUserId,
   getOpenClawAgentByUserId,
+  updateDailyDigestSchedule,
   getUserChannelConfigByUserId,
 } from "@/lib/db";
 import {
@@ -30,10 +31,16 @@ const deleteSchema = z.object({
   id: z.string().uuid("Select a valid daily digest schedule to remove."),
 });
 
+const updateSchema = z.object({
+  id: z.string().uuid("Select a valid daily digest schedule to update."),
+  time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/u, "Enter a valid daily time in HH:MM format."),
+});
+
 const SINGAPORE_TIMEZONE = "Asia/Singapore";
 const SINGAPORE_UTC_OFFSET_HOURS = 8;
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/u;
 const WHATSAPP_PHONE_PATTERN = /^\+[1-9]\d{5,19}$/u;
+const ANSI_ESCAPE_PATTERN = /\x1b\[[0-9;]*m/gu;
 
 function convertSingaporeTimeToUtc(time: string) {
   const [hour, minute] = time.split(":").map(Number);
@@ -103,8 +110,29 @@ function resolveDeliveryTarget(
   return deliveryTarget;
 }
 
+function sanitizeLiveCronOutput(output: string) {
+  return sanitizeProvisioningText(output)
+    .replace(ANSI_ESCAPE_PATTERN, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^Bind:\s+/iu.test(line))
+    .filter((line) => !/^Gateway target:\s+/iu.test(line))
+    .filter((line) => !/^\[plugins\]/iu.test(line))
+    .filter((line) => !/^\[telegram\]/iu.test(line))
+    .filter((line) => !/^\[moltguard\]/iu.test(line))
+    .filter((line) => !/plugins\.allow is empty/iu.test(line))
+    .filter((line) => !/OpenGuardrails dashboard started/iu.test(line))
+    .filter((line) => !/Gateway port .* is still in use after waiting/iu.test(line))
+    .join("\n")
+    .trim();
+}
+
 function parseLiveCronRecords(output: string) {
-  const lines = output.split("\n").map((line) => line.trim()).filter(Boolean);
+  const lines = sanitizeLiveCronOutput(output)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   if (lines.length < 2) {
     return [] as Array<{
@@ -120,8 +148,24 @@ function parseLiveCronRecords(output: string) {
     }>;
   }
 
+  const headerIndex = lines.findIndex((line) => /^ID\s+Name\s+Schedule\s+Next\s+Last\s+Status\s+Target\s+Agent\s+ID\s+Model$/iu.test(line));
+
+  if (headerIndex === -1) {
+    return [] as Array<{
+      id: string;
+      name: string;
+      schedule: string;
+      next: string;
+      last: string;
+      status: string;
+      target: string;
+      agentId: string;
+      model: string;
+    }>;
+  }
+
   return lines
-    .slice(1)
+    .slice(headerIndex + 1)
     .map((line) => line.split(/\s+/).map((part) => part.trim()).filter(Boolean))
     .filter((parts) => parts.length >= 9)
     .map((parts) => {
@@ -175,7 +219,7 @@ async function getLiveCronJobs(instance: string) {
     instance,
   ]);
 
-  const output = sanitizeProvisioningText(result.stdout || result.stderr);
+  const output = sanitizeLiveCronOutput(result.stdout || result.stderr);
 
   if (result.code !== 0) {
     throw new Error(output || "Unable to list the live cron jobs.");
@@ -204,6 +248,32 @@ async function getLiveCronJobs(instance: string) {
     liveCronLines: output.split("\n").map((line) => line.trim()).filter(Boolean),
     liveCronRecords: parseLiveCronRecords(output),
   };
+}
+
+async function getLiveCronJobsSafe(instance: string) {
+  try {
+    return await getLiveCronJobs(instance);
+  } catch (error) {
+    const message = error instanceof Error
+      ? sanitizeLiveCronOutput(error.message) || "Unable to list the live cron jobs right now."
+      : "Unable to list the live cron jobs right now.";
+
+    return {
+      liveCronOutput: message,
+      liveCronLines: [] as string[],
+      liveCronRecords: [] as Array<{
+        id: string;
+        name: string;
+        schedule: string;
+        next: string;
+        last: string;
+        status: string;
+        target: string;
+        agentId: string;
+        model: string;
+      }>,
+    };
+  }
 }
 
 function getDailyDigestContext(userId: string) {
@@ -241,7 +311,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
 
-  const liveCronJobs = await getLiveCronJobs(context.instance);
+  const liveCronJobs = await getLiveCronJobsSafe(context.instance);
 
   return NextResponse.json({ schedules: serializeSchedules(user.id), ...liveCronJobs });
 }
@@ -329,7 +399,7 @@ export async function POST(request: Request) {
       promptText: body.prompt,
     });
 
-    const liveCronJobs = await getLiveCronJobs(context.instance);
+    const liveCronJobs = await getLiveCronJobsSafe(context.instance);
 
     return NextResponse.json({
       success: true,
@@ -390,7 +460,7 @@ export async function DELETE(request: Request) {
 
     deleteDailyDigestSchedule(schedule.id);
 
-    const liveCronJobs = await getLiveCronJobs(context.instance);
+    const liveCronJobs = await getLiveCronJobsSafe(context.instance);
 
     return NextResponse.json({
       success: true,
@@ -401,6 +471,112 @@ export async function DELETE(request: Request) {
     });
   } catch (caughtError) {
     const message = getValidationErrorMessage(caughtError, "Unable to remove the daily digest schedule.");
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const user = getCurrentUserFromRequest(request);
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  try {
+    const body = updateSchema.parse(await request.json());
+    const schedule = getDailyDigestScheduleById(body.id);
+
+    if (!schedule || schedule.userId !== user.id) {
+      return NextResponse.json({ error: "Daily digest schedule not found." }, { status: 404 });
+    }
+
+    const context = getDailyDigestContext(user.id);
+
+    if ("error" in context) {
+      return NextResponse.json({ error: context.error }, { status: context.status });
+    }
+
+    if (schedule.timeSgt === body.time) {
+      return NextResponse.json({
+        success: true,
+        updatedTime: schedule.timeSgt,
+        updatedUtcTime: schedule.timeUtc,
+        schedules: serializeSchedules(user.id),
+        ...(await getLiveCronJobsSafe(context.instance)),
+      });
+    }
+
+    const existingAtTime = getDailyDigestScheduleByUserIdAndTime(user.id, body.time);
+
+    if (existingAtTime && existingAtTime.id !== schedule.id) {
+      return NextResponse.json({ error: `A daily digest is already scheduled for ${body.time} SGT.` }, { status: 409 });
+    }
+
+    const updatedUtcTime = convertSingaporeTimeToUtc(body.time);
+    const updatedJobName = buildDailyDigestJobName(user.id, body.time);
+
+    await runClawmacdoCommand([
+      "cron-remove",
+      "--instance",
+      context.instance,
+      "--name",
+      schedule.jobName,
+    ]);
+
+    if (updatedJobName !== schedule.jobName) {
+      await runClawmacdoCommand([
+        "cron-remove",
+        "--instance",
+        context.instance,
+        "--name",
+        updatedJobName,
+      ]);
+    }
+
+    const result = await runClawmacdoCommand([
+      "cron-message",
+      "--instance",
+      context.instance,
+      "--name",
+      updatedJobName,
+      "--schedule",
+      buildCronExpression(body.time),
+      "--channel",
+      schedule.deliveryChannel,
+      "--to",
+      schedule.deliveryTarget,
+      "--message",
+      buildDigestPrompt(context.agent.agentName, context.agent.region, context.agent.trackingTopics, schedule.promptText),
+    ]);
+
+    if (result.code !== 0) {
+      return NextResponse.json(
+        {
+          error: sanitizeProvisioningText(
+            result.stderr || result.stdout || "Unable to update the daily digest schedule.",
+          ),
+        },
+        { status: 400 },
+      );
+    }
+
+    updateDailyDigestSchedule(schedule.id, {
+      timeSgt: body.time,
+      timeUtc: updatedUtcTime,
+      jobName: updatedJobName,
+    });
+
+    const liveCronJobs = await getLiveCronJobsSafe(context.instance);
+
+    return NextResponse.json({
+      success: true,
+      updatedTime: body.time,
+      updatedUtcTime,
+      schedules: serializeSchedules(user.id),
+      ...liveCronJobs,
+    });
+  } catch (caughtError) {
+    const message = getValidationErrorMessage(caughtError, "Unable to update the daily digest schedule.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

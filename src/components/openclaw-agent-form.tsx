@@ -96,6 +96,20 @@ export function OpenClawAgentForm({
   const [error, setError] = useState<string | null>(null);
   const isEditMode = mode === "edit";
 
+  async function parseJsonResponse(response: Response) {
+    const responseText = await response.text();
+
+    if (!responseText.trim()) {
+      return null as { error?: string; nextPath?: string } | null;
+    }
+
+    try {
+      return JSON.parse(responseText) as { error?: string; nextPath?: string };
+    } catch {
+      throw new Error(response.ok ? "Saved successfully, but the server returned an invalid response." : "The server returned an invalid response.");
+    }
+  }
+
   function addTopics(values: string[]) {
     if (values.length === 0) {
       return;
@@ -180,14 +194,14 @@ export function OpenClawAgentForm({
         }),
       });
 
-      const payload = (await response.json()) as { error?: string; nextPath?: string };
+      const payload = await parseJsonResponse(response);
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to save the OpenClaw agent.");
+        throw new Error(payload?.error ?? "Unable to save the OpenClaw agent.");
       }
 
       startTransition(() => {
-        router.push(payload.nextPath ?? "/dashboard");
+        router.push(payload?.nextPath ?? "/dashboard");
         router.refresh();
       });
     } catch (caughtError) {
