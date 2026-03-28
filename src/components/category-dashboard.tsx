@@ -2,12 +2,26 @@
 
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 
+import { useRouter } from "next/navigation";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   CheckCircle2,
   Clock3,
   LoaderCircle,
   Trash2,
   RefreshCcw,
+  ServerCrash,
   X,
 } from "lucide-react";
 
@@ -95,7 +109,31 @@ export function CategoryDashboard({
   const [isLiveCronModalOpen, setIsLiveCronModalOpen] = useState(false);
   const [digestError, setDigestError] = useState<string | null>(null);
   const [digestSuccess, setDigestSuccess] = useState<string | null>(null);
+  const [destroyBusy, setDestroyBusy] = useState(false);
+  const [destroyConfirming, setDestroyConfirming] = useState(false);
   const telegramChatIdStorageKey = `newsclaw.telegramChatId:${userId}`;
+  const router = useRouter();
+
+  async function destroyInstance() {
+    setDestroyBusy(true);
+
+    try {
+      const response = await fetch("/api/provision/destroy", { method: "POST" });
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to destroy the instance.");
+      }
+
+      router.push("/setup-agent");
+      router.refresh();
+    } catch (caughtError) {
+      setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to destroy the instance.");
+      setDestroyConfirming(false);
+    } finally {
+      setDestroyBusy(false);
+    }
+  }
 
   const deliveryTargetLabel = initialPreferredChannel === "telegram"
     ? "Telegram chat ID"
@@ -243,14 +281,13 @@ export function CategoryDashboard({
       }
 
       setDigestSchedules(payload.schedules ?? digestSchedules);
-      setLiveCronLines(payload.liveCronLines ?? []);
-      setLiveCronRecords(payload.liveCronRecords ?? []);
-      setLiveCronOutput(payload.liveCronOutput ?? "No cron jobs.");
       setDigestPrompt("");
 
       setDigestSuccess(
         `Daily digest scheduled for ${payload.scheduledTime ?? digestTime} SGT (${payload.scheduledUtcTime ?? digestTime} UTC) via ${payload.deliveryChannel ?? initialPreferredChannel} to ${payload.deliveryTarget ?? recipient}.`
       );
+
+      void refreshLiveCronJobs();
     } catch (caughtError) {
       setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to schedule the daily digest.");
     } finally {
@@ -286,14 +323,13 @@ export function CategoryDashboard({
       }
 
       setDigestSchedules(payload.schedules ?? []);
-      setLiveCronLines(payload.liveCronLines ?? []);
-      setLiveCronRecords(payload.liveCronRecords ?? []);
-      setLiveCronOutput(payload.liveCronOutput ?? "No cron jobs.");
       setDigestSuccess(
         payload.remoteRemoved
           ? `Daily digest removed. OpenClaw cron job ${payload.removedJobName ?? ""} was deleted as well.`.trim()
           : "Daily digest removed."
       );
+
+      void refreshLiveCronJobs();
     } catch (caughtError) {
       setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to remove the daily digest.");
     } finally {
@@ -329,14 +365,13 @@ export function CategoryDashboard({
       }
 
       setDigestSchedules(payload.schedules ?? []);
-      setLiveCronLines(payload.liveCronLines ?? []);
-      setLiveCronRecords(payload.liveCronRecords ?? []);
-      setLiveCronOutput(payload.liveCronOutput ?? "No cron jobs.");
       setDigestEditingId(null);
       setDigestEditingTime("");
       setDigestSuccess(
         `Daily digest updated to ${payload.updatedTime ?? digestEditingTime} SGT (${payload.updatedUtcTime ?? digestEditingTime} UTC).`
       );
+
+      void refreshLiveCronJobs();
     } catch (caughtError) {
       setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to update the daily digest time.");
     } finally {
@@ -590,6 +625,36 @@ export function CategoryDashboard({
               <Button variant="outline" className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white" asChild>
                 <a href="/setup-agent?edit=1">Edit preferred topics</a>
               </Button>
+              <AlertDialog open={destroyConfirming} onOpenChange={setDestroyConfirming}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-2xl border-rose-400/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 hover:text-rose-100"
+                  >
+                    <ServerCrash className="size-4" />
+                    Destroy instance
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-2xl border-slate-200 bg-white">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Destroy instance?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently destroy the cloud instance and reset your account back to setup. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={destroyBusy} className="rounded-2xl">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => { e.preventDefault(); void destroyInstance(); }}
+                      disabled={destroyBusy}
+                      className="rounded-2xl bg-rose-600 text-white hover:bg-rose-700"
+                    >
+                      {destroyBusy ? <LoaderCircle className="size-4 animate-spin" /> : <ServerCrash className="size-4" />}
+                      Destroy
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </CardContent>
         </Card>

@@ -47,6 +47,12 @@ type WorkerPayload =
       channel: "whatsapp" | "telegram";
       phoneNumber?: string;
       telegramBotToken?: string;
+    }
+  | {
+      mode: "plugin-install";
+      restoreJobId: string;
+      userId: string;
+      instance: string;
     };
 
 export function getClawmacdoBinaryPath() {

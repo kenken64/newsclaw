@@ -35,12 +35,30 @@ const RESTORE_PLUGIN_INSTALL_DELAY_MS = Math.max(
   0,
   Number.parseInt(process.env.NEWSCLAW_RESTORE_PLUGIN_INSTALL_DELAY_MS ?? "15000", 10) || 15000,
 );
-const PAIRING_RESET_DELAY_MS = Math.max(
-  0,
-  Number.parseInt(process.env.NEWSCLAW_PAIRING_RESET_DELAY_MS ?? "3000", 10) || 3000,
-);
 const QR_GLYPH_PATTERN = /[█▀▄▐▌▖▗▘▙▚▛▜▝▞▟]/u;
 const ANSI_QR_PATTERN = /(\x1b\[[0-9;]*m[ ]{2}){3,}/u;
+
+function sanitizePairingOutput(value) {
+  return String(value || "")
+    .replace(/\x1b\[[0-9;]*m/gu, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^\[plugins\]/iu.test(line))
+    .filter((line) => !/^\[telegram\]/iu.test(line))
+    .filter((line) => !/^\[moltguard\]/iu.test(line))
+    .filter((line) => !/^\[whatsapp\]/iu.test(line))
+    .filter((line) => !/plugins\.allow is empty/iu.test(line))
+    .filter((line) => !/OpenGuardrails dashboard started/iu.test(line))
+    .filter((line) => !/Gateway port .* is still in use after waiting/iu.test(line))
+    .filter((line) => !/^Configuring Telegram bot token\b/iu.test(line))
+    .filter((line) => !/^Setting up Telegram\b/iu.test(line))
+    .filter((line) => !/^Restarting gateway\b/iu.test(line))
+    .filter((line) => !/^Config warnings:/iu.test(line))
+    .filter((line) => !/^-\s*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
+    .join("\n")
+    .trim();
+}
 
 function getClawmacdoSpawnOptions(commandArgs) {
   if (process.platform === "win32" && /[\\/]node_modules[\\/]clawmacdo[\\/]bin[\\/]clawmacdo$/i.test(clawmacdoBin)) {
@@ -511,29 +529,25 @@ function runCommand(commandArgs, handlers) {
   });
 }
 
-async function runPairingReset(mode) {
-  if (mode !== "telegram-setup" && mode !== "whatsapp-setup") {
-    return;
+async function runCommandWithRetry(commandArgs, handlers, { retries = 2, delayMs = 3000, retryOn = /Connection refused/i } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const result = await runCommand(commandArgs, handlers);
+
+    if (result.code === 0) {
+      return result;
+    }
+
+    const output = `${result.stderr || ""} ${result.stdout || ""}`;
+
+    if (attempt < retries && retryOn.test(output)) {
+      await sleep(delayMs);
+      continue;
+    }
+
+    return result;
   }
-
-  const resetCommandArgs = mode === "telegram-setup"
-    ? ["telegram-reset", "--instance", payload.instance]
-    : ["whatsapp-reset", "--instance", payload.instance];
-  const resetLabel = mode === "telegram-setup" ? "Telegram" : "WhatsApp";
-
-  const resetResult = await runCommand(resetCommandArgs, {
-    onStdoutLine() {},
-    onStderrLine() {},
-  });
-
-  if (resetResult.code !== 0) {
-    throw new Error(
-      (resetResult.stderr || resetResult.stdout || `Unable to reset ${resetLabel} pairing state.`).trim(),
-    );
-  }
-
-  await sleep(PAIRING_RESET_DELAY_MS);
 }
+
 
 async function runRestore() {
   const metadata = {
@@ -543,7 +557,7 @@ async function runRestore() {
     ssh_key_path: null,
     ssh_private_key_encrypted: null,
   };
-  const totalSteps = 6;
+  const totalSteps = 5;
 
   updateRestoreJob(payload.jobId, { status: "running", error_message: null, worker_pid: process.pid });
 
@@ -624,62 +638,6 @@ async function runRestore() {
     return;
   }
 
-  if (!metadata.deploy_id) {
-    updateRestoreJob(payload.jobId, {
-      status: "failed",
-      current_step: 5,
-      total_steps: totalSteps,
-      step_label: "Plugin installation failed",
-      worker_pid: null,
-      error_message: "Restore completed but no deploy ID was returned, so the MoltGuard plugin could not be installed.",
-      completed_at: now(),
-    });
-    return;
-  }
-
-  updateRestoreJob(payload.jobId, {
-    status: "running",
-    current_step: 6,
-    total_steps: totalSteps,
-    step_label: `Installing plugin ${RESTORE_PLUGIN_NAME}`,
-  });
-  if (RESTORE_PLUGIN_INSTALL_DELAY_MS > 0) {
-    appendRestoreOutput(
-      payload.jobId,
-      `[step] Waiting ${RESTORE_PLUGIN_INSTALL_DELAY_MS}ms before plugin installation\n`,
-    );
-    await sleep(RESTORE_PLUGIN_INSTALL_DELAY_MS);
-  }
-  appendRestoreOutput(payload.jobId, `[step] Installing plugin ${RESTORE_PLUGIN_NAME}\n`);
-
-  const pluginInstallResult = await runCommand([
-    "plugin-install",
-    "--instance",
-    metadata.deploy_id,
-    "--plugin",
-    RESTORE_PLUGIN_NAME,
-  ], {
-    onStdoutLine(line) {
-      appendRestoreOutput(payload.jobId, `[plugin] ${line}\n`);
-    },
-    onStderrLine(line) {
-      appendRestoreOutput(payload.jobId, `[plugin][stderr] ${line}\n`);
-    },
-  });
-
-  if (pluginInstallResult.code !== 0) {
-    updateRestoreJob(payload.jobId, {
-      status: "failed",
-      current_step: 6,
-      total_steps: totalSteps,
-      step_label: "Plugin installation failed",
-      worker_pid: null,
-      error_message: (pluginInstallResult.stderr || pluginInstallResult.stdout || `Plugin installation failed for ${RESTORE_PLUGIN_NAME}.`).trim(),
-      completed_at: now(),
-    });
-    return;
-  }
-
   if (metadata.ssh_key_path) {
     const privateKey = fs.readFileSync(metadata.ssh_key_path, "utf8");
     metadata.ssh_private_key_encrypted = encryptPrivateKey(privateKey, encryptionSecret);
@@ -736,7 +694,7 @@ async function runMessagingSetup(mode) {
     channel: payload.channel,
     status: pairingStatus,
     qr_output: "",
-    instruction_text: mode === "telegram-setup" ? "Setting up Telegram bot and waiting for pairing challenge code." : "Fetching WhatsApp pairing QR code.",
+    instruction_text: mode === "telegram-setup" ? "Preparing Telegram bot. This may take a moment..." : "Fetching WhatsApp pairing QR code.",
     pairing_code: null,
     error_message: null,
   });
@@ -744,30 +702,47 @@ async function runMessagingSetup(mode) {
   let result;
 
   if (mode === "telegram-setup") {
-    await runPairingReset(mode);
+    result = await runCommandWithRetry(
+      ["telegram-setup", "--instance", payload.instance, "--bot-token", payload.telegramBotToken, "--reset"],
+      { onStdoutLine() {}, onStderrLine() {} },
+      { retries: 2, delayMs: 3000, retryOn: /Connection refused|Connection reset|Connection timed out/i },
+    );
 
-    result = await runCommand(["telegram-setup", "--instance", payload.instance, "--bot-token", payload.telegramBotToken], {
-      onStdoutLine() {},
-      onStderrLine() {},
-    });
-  } else if (mode === "whatsapp-setup") {
-    await runPairingReset(mode);
-
-    await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
-      const setupResult = await runSshCommand({
-        ...connection,
-        remoteCommand: getOpenClawRemoteShell(connection.sshUser),
-        stdinScript: getWhatsAppSetupCommand(payload.phoneNumber ?? ""),
-      });
-
-      if (setupResult.code !== 0) {
-        throw new Error((setupResult.stderr || setupResult.stdout || "Unable to configure WhatsApp on the restored instance.").trim());
+    if (result.code === 0 && payload.telegramBotToken) {
+      try {
+        await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
+          await runSshCommand({
+            ...connection,
+            remoteCommand: `python3 -c "
+import json, sys
+p = '/home/openclaw/.openclaw/openclaw.json'
+with open(p) as f:
+    d = json.load(f)
+changed = False
+t = d.get('channels', {}).get('telegram')
+if t and t.get('botToken') != sys.argv[1]:
+    t['botToken'] = sys.argv[1]
+    changed = True
+entries = d.get('plugins', {}).get('entries', {})
+if 'moltguard' in entries:
+    del entries['moltguard']
+    changed = True
+if changed:
+    with open(p, 'w') as f:
+        json.dump(d, f, indent=2)
+" '${payload.telegramBotToken.replace(/'/g, "'\\''")}'`,
+          });
+        });
+      } catch (_ignored) {
+        // non-fatal: gateway.env token will still be used on next restart
       }
-    });
-
-    result = await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
-      return fetchWhatsAppQrWithRetry(connection);
-    });
+    }
+  } else if (mode === "whatsapp-setup") {
+    result = await runCommandWithRetry(
+      ["whatsapp-setup", "--instance", payload.instance, "--phone-number", payload.phoneNumber ?? "", "--reset"],
+      { onStdoutLine() {}, onStderrLine() {} },
+      { retries: 2, delayMs: 3000, retryOn: /Connection refused|Connection reset|Connection timed out/i },
+    );
   } else {
     result = await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
       return fetchWhatsAppQrWithRetry(connection);
@@ -778,15 +753,17 @@ async function runMessagingSetup(mode) {
   const loweredOutput = combinedOutput.toLowerCase();
 
   if (result.code !== 0) {
-    const failureMessage = (result.stderr || result.stdout || `Messaging pairing command exited with code ${result.code}.`).trim();
+    const failureMessage = sanitizePairingOutput(result.stderr || result.stdout || `Messaging pairing command exited with code ${result.code}.`);
 
     upsertMessagingPairing({
       user_id: payload.userId,
       restore_job_id: payload.restoreJobId,
       channel: payload.channel,
       status: "failed",
-      qr_output: result.stdout.trim(),
-      instruction_text: result.stdout.trim(),
+      qr_output: payload.channel === "whatsapp" ? result.stdout.trim() : "",
+      instruction_text: payload.channel === "telegram"
+        ? "Telegram bot setup failed. Check the bot token and try again."
+        : sanitizePairingOutput(result.stdout),
       error_message: failureMessage,
       last_updated_at: now(),
     });
@@ -843,10 +820,50 @@ async function runMessagingSetup(mode) {
     channel: payload.channel,
     status: mode === "telegram-setup" ? "awaiting_code" : "qr_ready",
     qr_output: mode === "telegram-setup" ? "" : combinedOutput,
-    instruction_text: mode === "telegram-setup" ? result.stdout.trim() : "Scan the QR code with WhatsApp to complete pairing.",
+    instruction_text: mode === "telegram-setup"
+      ? "Telegram bot is ready. Send /start to the bot, then enter the challenge code below."
+      : "Scan the QR code with WhatsApp to complete pairing.",
     error_message: null,
     last_updated_at: now(),
   });
+}
+
+async function runPluginInstall() {
+  if (!payload.instance) {
+    appendRestoreOutput(payload.restoreJobId, `[plugin] No instance identifier, skipping plugin install.\n`);
+    return;
+  }
+
+  if (RESTORE_PLUGIN_INSTALL_DELAY_MS > 0) {
+    appendRestoreOutput(payload.restoreJobId, `[plugin] Waiting ${RESTORE_PLUGIN_INSTALL_DELAY_MS}ms before plugin installation\n`);
+    await sleep(RESTORE_PLUGIN_INSTALL_DELAY_MS);
+  }
+
+  appendRestoreOutput(payload.restoreJobId, `[plugin] Installing plugin ${RESTORE_PLUGIN_NAME}\n`);
+
+  const pluginInstallResult = await runCommand([
+    "plugin-install",
+    "--instance",
+    payload.instance,
+    "--plugin",
+    RESTORE_PLUGIN_NAME,
+  ], {
+    onStdoutLine(line) {
+      appendRestoreOutput(payload.restoreJobId, `[plugin] ${line}\n`);
+    },
+    onStderrLine(line) {
+      appendRestoreOutput(payload.restoreJobId, `[plugin][stderr] ${line}\n`);
+    },
+  });
+
+  if (pluginInstallResult.code !== 0) {
+    appendRestoreOutput(
+      payload.restoreJobId,
+      `[plugin] Plugin installation failed: ${(pluginInstallResult.stderr || pluginInstallResult.stdout || "unknown error").trim()}\n`,
+    );
+  } else {
+    appendRestoreOutput(payload.restoreJobId, `[plugin] Plugin ${RESTORE_PLUGIN_NAME} installed successfully.\n`);
+  }
 }
 
 try {
@@ -854,6 +871,8 @@ try {
     await runRestore();
   } else if (payload.mode === "whatsapp-setup" || payload.mode === "whatsapp-refresh" || payload.mode === "telegram-setup") {
     await runMessagingSetup(payload.mode);
+  } else if (payload.mode === "plugin-install") {
+    await runPluginInstall();
   } else {
     throw new Error(`Unsupported worker mode: ${payload.mode}`);
   }
@@ -879,5 +898,12 @@ try {
       error_message: message,
       last_updated_at: now(),
     });
+  }
+
+  if (payload.mode === "plugin-install") {
+    appendRestoreOutput(
+      payload.restoreJobId,
+      `[plugin] Background plugin installation failed: ${message}\n`,
+    );
   }
 }

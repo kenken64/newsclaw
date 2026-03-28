@@ -14,7 +14,7 @@
     "@simplewebauthn/server": "^13.3.0",
     "better-sqlite3": "^12.8.0",
     "class-variance-authority": "^0.7.1",
-    "clawmacdo": "^0.54.0",
+    "clawmacdo": "^0.55.0",
     "clsx": "^2.1.1",
     "jose": "^6.2.2",
     "jszip": "^3.10.1",

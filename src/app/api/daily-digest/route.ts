@@ -124,6 +124,8 @@ function sanitizeLiveCronOutput(output: string) {
     .filter((line) => !/plugins\.allow is empty/iu.test(line))
     .filter((line) => !/OpenGuardrails dashboard started/iu.test(line))
     .filter((line) => !/Gateway port .* is still in use after waiting/iu.test(line))
+    .filter((line) => !/^Config warnings:/iu.test(line))
+    .filter((line) => !/^-\s*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
     .join("\n")
     .trim();
 }
@@ -354,41 +356,6 @@ export async function POST(request: Request) {
       channelConfig.whatsappPhoneNumber,
     );
 
-    await runClawmacdoCommand([
-      "cron-remove",
-      "--instance",
-      context.instance,
-      "--name",
-      jobName,
-    ]);
-
-    const result = await runClawmacdoCommand([
-      "cron-message",
-      "--instance",
-      context.instance,
-      "--name",
-      jobName,
-      "--schedule",
-      buildCronExpression(body.time),
-      "--channel",
-      deliveryChannel,
-      "--to",
-      deliveryTarget,
-      "--message",
-      buildDigestPrompt(context.agent.agentName, context.agent.region, context.agent.trackingTopics, body.prompt),
-    ]);
-
-    if (result.code !== 0) {
-      return NextResponse.json(
-        {
-          error: sanitizeProvisioningText(
-            result.stderr || result.stdout || "Unable to schedule the daily digest.",
-          ),
-        },
-        { status: 400 },
-      );
-    }
-
     createDailyDigestSchedule({
       userId: user.id,
       timeSgt: body.time,
@@ -399,7 +366,31 @@ export async function POST(request: Request) {
       promptText: body.prompt,
     });
 
-    const liveCronJobs = await getLiveCronJobsSafe(context.instance);
+    void (async () => {
+      try {
+        const result = await runClawmacdoCommand([
+          "cron-message",
+          "--instance",
+          context.instance,
+          "--name",
+          jobName,
+          "--schedule",
+          buildCronExpression(body.time),
+          "--channel",
+          deliveryChannel,
+          "--to",
+          deliveryTarget,
+          "--message",
+          buildDigestPrompt(context.agent.agentName, context.agent.region, context.agent.trackingTopics, body.prompt),
+        ]);
+
+        if (result.code !== 0) {
+          console.error("[daily-digest] Background cron-message failed:", sanitizeProvisioningText(result.stderr || result.stdout || ""));
+        }
+      } catch (error) {
+        console.error("[daily-digest] Background cron-message error:", error instanceof Error ? error.message : error);
+      }
+    })();
 
     return NextResponse.json({
       success: true,
@@ -410,7 +401,6 @@ export async function POST(request: Request) {
       deliveryTarget,
       schedule: buildCronExpression(body.time),
       schedules: serializeSchedules(user.id),
-      ...liveCronJobs,
     });
   } catch (caughtError) {
     const message = getValidationErrorMessage(caughtError, "Unable to schedule the daily digest.");
@@ -460,14 +450,11 @@ export async function DELETE(request: Request) {
 
     deleteDailyDigestSchedule(schedule.id);
 
-    const liveCronJobs = await getLiveCronJobsSafe(context.instance);
-
     return NextResponse.json({
       success: true,
       remoteRemoved: true,
       removedJobName: schedule.jobName,
       schedules: serializeSchedules(user.id),
-      ...liveCronJobs,
     });
   } catch (caughtError) {
     const message = getValidationErrorMessage(caughtError, "Unable to remove the daily digest schedule.");
@@ -515,65 +502,55 @@ export async function PATCH(request: Request) {
     const updatedUtcTime = convertSingaporeTimeToUtc(body.time);
     const updatedJobName = buildDailyDigestJobName(user.id, body.time);
 
-    await runClawmacdoCommand([
-      "cron-remove",
-      "--instance",
-      context.instance,
-      "--name",
-      schedule.jobName,
-    ]);
-
-    if (updatedJobName !== schedule.jobName) {
-      await runClawmacdoCommand([
-        "cron-remove",
-        "--instance",
-        context.instance,
-        "--name",
-        updatedJobName,
-      ]);
-    }
-
-    const result = await runClawmacdoCommand([
-      "cron-message",
-      "--instance",
-      context.instance,
-      "--name",
-      updatedJobName,
-      "--schedule",
-      buildCronExpression(body.time),
-      "--channel",
-      schedule.deliveryChannel,
-      "--to",
-      schedule.deliveryTarget,
-      "--message",
-      buildDigestPrompt(context.agent.agentName, context.agent.region, context.agent.trackingTopics, schedule.promptText),
-    ]);
-
-    if (result.code !== 0) {
-      return NextResponse.json(
-        {
-          error: sanitizeProvisioningText(
-            result.stderr || result.stdout || "Unable to update the daily digest schedule.",
-          ),
-        },
-        { status: 400 },
-      );
-    }
-
     updateDailyDigestSchedule(schedule.id, {
       timeSgt: body.time,
       timeUtc: updatedUtcTime,
       jobName: updatedJobName,
     });
 
-    const liveCronJobs = await getLiveCronJobsSafe(context.instance);
+    void (async () => {
+      try {
+        const removeJobs = [
+          runClawmacdoCommand(["cron-remove", "--instance", context.instance, "--name", schedule.jobName]),
+        ];
+
+        if (updatedJobName !== schedule.jobName) {
+          removeJobs.push(
+            runClawmacdoCommand(["cron-remove", "--instance", context.instance, "--name", updatedJobName]),
+          );
+        }
+
+        await Promise.all(removeJobs);
+
+        const result = await runClawmacdoCommand([
+          "cron-message",
+          "--instance",
+          context.instance,
+          "--name",
+          updatedJobName,
+          "--schedule",
+          buildCronExpression(body.time),
+          "--channel",
+          schedule.deliveryChannel,
+          "--to",
+          schedule.deliveryTarget,
+          "--message",
+          buildDigestPrompt(context.agent.agentName, context.agent.region, context.agent.trackingTopics, schedule.promptText),
+        ]);
+
+        if (result.code !== 0) {
+          console.error("[daily-digest] Background time update failed:", sanitizeProvisioningText(result.stderr || result.stdout || ""));
+        }
+      } catch (error) {
+        console.error("[daily-digest] Background time update error:", error instanceof Error ? error.message : error);
+      }
+    })();
 
     return NextResponse.json({
       success: true,
       updatedTime: body.time,
       updatedUtcTime,
       schedules: serializeSchedules(user.id),
-      ...liveCronJobs,
     });
   } catch (caughtError) {
     const message = getValidationErrorMessage(caughtError, "Unable to update the daily digest schedule.");

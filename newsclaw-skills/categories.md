@@ -1,94 +1,129 @@
 # OpenClaw NewsClaw Category Guide
 
-This reference maps the saved preferred topics to the related coverage categories and suggests practical search ideas for monitoring Asia, with emphasis on Southeast Asia.
+This reference maps the saved topics for **Kenneth Signal Desk** to the available coverage categories in OpenClaw.
 
-Region focus:
-Asia, with emphasis on Southeast Asia
+**Region focus:** Asia, with emphasis on Southeast Asia
 
-Preferred topics:
-- Human Resource
-- Technology
-- Generative AI
-- PC Gaming
+**Preferred topics:**
+- AI regulation
+- product launches
+- enterprise security
+- venture funding
+- M&A
 
-## Related Coverage Categories
+## How to use this guide
 
-### World Affairs (world)
-Geopolitics, diplomacy, conflicts, and international policy.
+Use the related categories to widen a briefing without losing the saved topic focus. For OpenClaw monitoring, start with the preferred topics, then add category-specific search terms to catch adjacent signals, policy shifts, and deal activity.
 
-How it relates to the preferred topics:
-- Can affect hiring, cross-border labor mobility, and expatriate talent flows.
-- Can influence tech supply chains, chip access, and data-sovereignty decisions.
-- Can shape AI regulation, export controls, and platform availability.
-- Can affect gaming distribution, payments, sanctions exposure, and regional consumer demand.
+---
 
-Targeted query ideas:
-- "World Affairs Asia Southeast Asia labor mobility {MONTH} {YEAR}"
-- "World Affairs Asia Southeast Asia technology supply chain {MONTH} {YEAR}"
-- "World Affairs Asia Southeast Asia AI regulation {MONTH} {YEAR}"
-- "World Affairs Asia Southeast Asia gaming market impact {MONTH} {YEAR}"
-- "trade tensions Asia Southeast Asia hiring technology AI gaming {MONTH} {YEAR}"
+## Technology (`technology`)
 
-### Technology (technology)
-AI, product launches, developer ecosystems, and platform changes.
+**Why it matters for the saved topics:**
+- Best fit for AI regulation, product launches, and platform changes.
+- Also useful for enterprise security vendors, developer ecosystems, and AI infrastructure.
 
-How it relates to the preferred topics:
-- Directly covers technology employers, HR systems, and workplace automation.
-- Captures generative AI releases, enterprise adoption, and local AI infrastructure.
-- Tracks consumer and enterprise hardware relevant to PC gaming and productivity.
+**Targeted query ideas:**
+- `OpenClaw technology Asia Southeast Asia AI regulation`
+- `OpenClaw technology Asia Southeast Asia product launch`
+- `OpenClaw technology Asia Southeast Asia enterprise security`
+- `OpenClaw technology Asia Southeast Asia AI model release`
+- `OpenClaw technology Asia Southeast Asia platform rollout`
 
-Targeted query ideas:
-- "Technology Asia Southeast Asia product launch {MONTH} {YEAR}"
-- "Technology Asia Southeast Asia enterprise AI {MONTH} {YEAR}"
-- "Technology Asia Southeast Asia HR tech {MONTH} {YEAR}"
-- "Technology Asia Southeast Asia PC gaming hardware {MONTH} {YEAR}"
-- "developer ecosystem Asia Southeast Asia AI platform change {MONTH} {YEAR}"
+---
 
-## Preferred-Topic-Specific Search Suggestions
+## World Affairs (`world`)
 
-### Human Resource
-Use for hiring, layoffs, pay, labor law, and workplace transformation.
+**Why it matters for the saved topics:**
+- Useful when regulation, cross-border trade, sanctions, diplomacy, or geopolitical tensions affect tech, security, or M&A.
+- Helps surface regional policy spillovers that may impact company operations.
 
-Search ideas:
-- "Human Resource Asia Southeast Asia layoffs hiring {MONTH} {YEAR}"
-- "Human Resource Asia Southeast Asia compensation labor policy {MONTH} {YEAR}"
-- "Human Resource Asia Southeast Asia remote work skills shortage {MONTH} {YEAR}"
-- "Human Resource Asia Southeast Asia HR tech automation {MONTH} {YEAR}"
+**Targeted query ideas:**
+- `OpenClaw world Asia Southeast Asia tech policy`
+- `OpenClaw world Asia Southeast Asia cross-border deal`
+- `OpenClaw world Asia Southeast Asia semiconductor supply chain`
+- `OpenClaw world Asia Southeast Asia digital sovereignty`
+- `OpenClaw world Asia Southeast Asia security incident impact`
 
-### Technology
-Use for launches, infrastructure, devices, cloud, and platform shifts.
+---
 
-Search ideas:
-- "Technology Asia Southeast Asia latest developments {MONTH} {YEAR}"
-- "Technology Asia Southeast Asia cloud devices semiconductors {MONTH} {YEAR}"
-- "Technology Asia Southeast Asia enterprise software {MONTH} {YEAR}"
-- "Technology Asia Southeast Asia platform policy change {MONTH} {YEAR}"
+## Business (`business`)
 
-### Generative AI
-Use for model releases, enterprise use cases, safety, policy, and local adoption.
+**Why it matters for the saved topics:**
+- Best fit for venture funding, M&A, earnings, strategy shifts, and market-moving company news.
+- Useful for tracking investor activity and regional expansion.
 
-Search ideas:
-- "Generative AI Asia Southeast Asia latest developments {MONTH} {YEAR}"
-- "Generative AI Asia Southeast Asia enterprise deployment {MONTH} {YEAR}"
-- "Generative AI Asia Southeast Asia regulation safety {MONTH} {YEAR}"
-- "Generative AI Asia Southeast Asia local language model {MONTH} {YEAR}"
+**Targeted query ideas:**
+- `OpenClaw business Asia Southeast Asia venture funding`
+- `OpenClaw business Asia Southeast Asia M&A`
+- `OpenClaw business Asia Southeast Asia strategic investment`
+- `OpenClaw business Asia Southeast Asia earnings guidance`
+- `OpenClaw business Asia Southeast Asia executive change`
 
-### PC Gaming
-Use for hardware, software, esports, storefronts, and market demand.
+---
 
-Search ideas:
-- "PC Gaming Asia Southeast Asia latest developments {MONTH} {YEAR}"
-- "PC Gaming Asia Southeast Asia GPU laptop launch {MONTH} {YEAR}"
-- "PC Gaming Asia Southeast Asia esports tournament {MONTH} {YEAR}"
-- "PC Gaming Asia Southeast Asia game publisher release {MONTH} {YEAR}"
+## Policy (`policy`)
 
-## Monitoring Tips
+**Why it matters for the saved topics:**
+- Best fit for AI regulation, compliance, data governance, cybersecurity rules, and public-sector decisions.
+- Often the earliest signal for changes affecting product launches and enterprise security.
 
-- Combine a topic with a country name for sharper results: Singapore, Malaysia, Indonesia, Thailand, Vietnam, Philippines.
-- Add one intent word at a time to avoid noisy results: layoffs, regulation, launch, earnings, adoption, breach, ban, subsidy.
-- For broader briefings, pair a preferred topic with a related category:
-  - Human Resource + World Affairs
-  - Technology + World Affairs
-  - Generative AI + Technology
-  - PC Gaming + Technology
-- For fast-moving monitoring, search both "latest" and "breaking" variants.
+**Targeted query ideas:**
+- `OpenClaw policy Asia Southeast Asia AI regulation`
+- `OpenClaw policy Asia Southeast Asia data protection`
+- `OpenClaw policy Asia Southeast Asia cybersecurity rules`
+- `OpenClaw policy Asia Southeast Asia digital services`
+- `OpenClaw policy Asia Southeast Asia procurement`
+
+---
+
+## Preferred-topic-specific search suggestions
+
+Use these when you want a direct monitoring sweep around the saved topics:
+
+### AI regulation
+- `OpenClaw AI regulation Asia Southeast Asia latest`
+- `OpenClaw AI regulation Singapore Indonesia Malaysia`
+- `OpenClaw AI regulation consultation guideline enforcement`
+- `OpenClaw AI regulation model governance data rules`
+
+### Product launches
+- `OpenClaw product launches Asia Southeast Asia latest`
+- `OpenClaw product launches Singapore Indonesia Malaysia`
+- `OpenClaw product launch enterprise AI cloud security`
+- `OpenClaw product launch regional rollout pricing availability`
+
+### Enterprise security
+- `OpenClaw enterprise security Asia Southeast Asia latest`
+- `OpenClaw enterprise security breach patch vulnerability`
+- `OpenClaw enterprise security cloud identity endpoint`
+- `OpenClaw enterprise security Singapore Malaysia Indonesia`
+
+### Venture funding
+- `OpenClaw venture funding Asia Southeast Asia latest`
+- `OpenClaw venture funding seed Series A Series B`
+- `OpenClaw venture funding startup AI security fintech`
+- `OpenClaw venture funding Singapore Indonesia Vietnam`
+
+### M&A
+- `OpenClaw M&A Asia Southeast Asia latest`
+- `OpenClaw M&A technology security fintech`
+- `OpenClaw M&A acquisition merger strategic stake`
+- `OpenClaw M&A Singapore Indonesia Malaysia`
+
+## Practical query combinations for OpenClaw
+
+- `OpenClaw AI regulation Singapore latest`
+- `OpenClaw enterprise security Southeast Asia breach`
+- `OpenClaw venture funding Indonesia Series A`
+- `OpenClaw M&A Asia technology acquisition`
+- `OpenClaw product launch Singapore enterprise AI`
+
+## Monitoring tip
+
+If a search returns too much noise, narrow by:
+- country name
+- company name
+- regulator name
+- deal type or security term
+- time window such as `today`, `this week`, or `latest`

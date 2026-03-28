@@ -20,6 +20,7 @@ import { getCurrentUserFromRequest } from "@/lib/session";
 
 const WHATSAPP_COMPLETION_CHECK_INTERVAL_MS = 10_000;
 const lastWhatsAppCompletionCheckAt = new Map<string, number>();
+const pluginInstallSpawned = new Set<string>();
 
 function hasCompletedWhatsAppLink(output: string | null | undefined) {
   const loweredOutput = String(output || "").toLowerCase();
@@ -61,6 +62,18 @@ export async function GET(request: Request) {
       errorMessage: null,
       lastUpdatedAt: new Date().toISOString(),
     });
+
+    const instance = getRestoreInstanceIdentifier(restoreJob);
+
+    if (instance && !pluginInstallSpawned.has(restoreJob.id)) {
+      pluginInstallSpawned.add(restoreJob.id);
+      spawnProvisioningWorker({
+        mode: "plugin-install",
+        restoreJobId: restoreJob.id,
+        userId: user.id,
+        instance,
+      });
+    }
   }
 
   if (
@@ -91,6 +104,18 @@ export async function GET(request: Request) {
           lastUpdatedAt: new Date().toISOString(),
         });
         lastWhatsAppCompletionCheckAt.delete(user.id);
+
+        const instance = getRestoreInstanceIdentifier(restoreJob);
+
+        if (instance && !pluginInstallSpawned.has(restoreJob.id)) {
+          pluginInstallSpawned.add(restoreJob.id);
+          spawnProvisioningWorker({
+            mode: "plugin-install",
+            restoreJobId: restoreJob.id,
+            userId: user.id,
+            instance,
+          });
+        }
       }
     } catch (error) {
       console.error(

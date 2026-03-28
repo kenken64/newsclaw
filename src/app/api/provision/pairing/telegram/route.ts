@@ -37,6 +37,8 @@ function sanitizeTelegramPairingOutput(value: string | null | undefined) {
     .filter((line) => !/plugins\.allow is empty/iu.test(line))
     .filter((line) => !/OpenGuardrails dashboard started/iu.test(line))
     .filter((line) => !/Gateway port .* is still in use after waiting/iu.test(line))
+    .filter((line) => !/^Config warnings:/iu.test(line))
+    .filter((line) => !/^-\s*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
     .join("\n")
     .trim();
 
@@ -139,6 +141,13 @@ export async function POST(request: Request) {
       pairingCode: body.code,
       errorMessage: null,
       lastUpdatedAt: new Date().toISOString(),
+    });
+
+    spawnProvisioningWorker({
+      mode: "plugin-install",
+      restoreJobId: restoreJob.id,
+      userId: user.id,
+      instance,
     });
 
     return NextResponse.json({ pairing: serializeMessagingPairing(getMessagingPairingByUserId(user.id)) });
