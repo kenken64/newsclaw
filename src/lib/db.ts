@@ -1158,6 +1158,19 @@ export function upsertUserChannelConfig(input: {
   return record;
 }
 
+export function getTelegramConfigsWithCompletedPairing(excludeUserId: string) {
+  return db.prepare(`
+    SELECT ucc.telegram_bot_token_encrypted
+    FROM user_channel_configs ucc
+    INNER JOIN messaging_pairings mp ON mp.user_id = ucc.user_id
+    WHERE ucc.preferred_channel = 'telegram'
+      AND ucc.telegram_bot_token_encrypted IS NOT NULL
+      AND ucc.user_id != ?
+      AND mp.status = 'completed'
+      AND mp.channel = 'telegram'
+  `).all(excludeUserId) as Array<{ telegram_bot_token_encrypted: string }>;
+}
+
 export function getMessagingPairingByUserId(userId: string) {
   const row = db
     .prepare("SELECT * FROM messaging_pairings WHERE user_id = ?")

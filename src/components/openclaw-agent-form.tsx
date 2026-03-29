@@ -27,6 +27,7 @@ type Props = {
   initialChannelConfig?: {
     preferredChannel: "whatsapp" | "telegram";
     whatsappPhoneNumber: string | null;
+    hasTelegramBotToken: boolean;
   };
   mode?: "create" | "edit";
 };
@@ -515,7 +516,11 @@ export function OpenClawAgentForm({
                 ? (whatsAppPhoneNumber
                     ? maskPhoneNumber(whatsAppPhoneNumber)
                     : "Add a phone number to generate the pairing QR after restore.")
-                : (telegramBotToken ? "Bot token ready to be encrypted and used for Telegram setup." : "Provide the bot token so the Telegram challenge flow can be started after restore.")}
+                : (telegramBotToken
+                    ? "Bot token ready to be encrypted and used for Telegram setup."
+                    : initialChannelConfig?.hasTelegramBotToken
+                      ? "Existing bot token is stored. Leave the field blank to keep it."
+                      : "Provide the bot token so the Telegram challenge flow can be started after restore.")}
             </p>
           </div>
 

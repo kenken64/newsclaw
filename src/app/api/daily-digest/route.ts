@@ -41,6 +41,7 @@ const SINGAPORE_UTC_OFFSET_HOURS = 8;
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/u;
 const WHATSAPP_PHONE_PATTERN = /^\+[1-9]\d{5,19}$/u;
 const ANSI_ESCAPE_PATTERN = /\x1b\[[0-9;]*m/gu;
+const REMOTE_CRON_UNREACHABLE_PATTERN = /(?:SSH error: .*?(?:connection timed out|operation timed out|no route to host|network is unreachable|connection refused|could not resolve hostname)|TCP connect .*?(?:connection timed out|operation timed out)|i\/o timeout)/iu;
 
 function convertSingaporeTimeToUtc(time: string) {
   const [hour, minute] = time.split(":").map(Number);
@@ -128,6 +129,10 @@ function sanitizeLiveCronOutput(output: string) {
     .filter((line) => !/^-\s*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
     .join("\n")
     .trim();
+}
+
+function isRemoteCronCleanupRecoverableError(output: string) {
+  return REMOTE_CRON_UNREACHABLE_PATTERN.test(sanitizeProvisioningText(output));
 }
 
 function parseLiveCronRecords(output: string) {
@@ -438,11 +443,25 @@ export async function DELETE(request: Request) {
     ]);
 
     if (result.code !== 0) {
+      const details = sanitizeProvisioningText(
+        result.stderr || result.stdout || "Unable to remove the OpenClaw cron job. The local daily digest schedule was not deleted.",
+      );
+
+      if (isRemoteCronCleanupRecoverableError(details)) {
+        deleteDailyDigestSchedule(schedule.id);
+
+        return NextResponse.json({
+          success: true,
+          remoteRemoved: false,
+          removedJobName: schedule.jobName,
+          warning: `Daily digest removed locally, but NewsClaw could not reach ${context.instance} to remove the OpenClaw cron job. ${details}`,
+          schedules: serializeSchedules(user.id),
+        });
+      }
+
       return NextResponse.json(
         {
-          error: sanitizeProvisioningText(
-            result.stderr || result.stdout || "Unable to remove the OpenClaw cron job. The local daily digest schedule was not deleted.",
-          ),
+          error: details,
         },
         { status: 400 },
       );

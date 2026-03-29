@@ -57,7 +57,10 @@ export default async function DashboardPage() {
               </p>
             </div>
           </div>
-          <SignOutButton />
+          <div className="flex items-center gap-2 rounded-full border border-white/15 bg-white/10 pl-4 pr-1 py-1">
+            <span className="max-w-[180px] truncate text-sm text-slate-300">{user.email}</span>
+            <SignOutButton />
+          </div>
         </header>
 
         <div className="grid gap-4 md:grid-cols-3">

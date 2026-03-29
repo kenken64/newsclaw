@@ -744,9 +744,11 @@ if changed:
       { retries: 2, delayMs: 3000, retryOn: /Connection refused|Connection reset|Connection timed out/i },
     );
   } else {
-    result = await withRestoreSshConnection(payload.restoreJobId, async (connection) => {
-      return fetchWhatsAppQrWithRetry(connection);
-    });
+    result = await runCommandWithRetry(
+      ["whatsapp-qr", "--instance", payload.instance],
+      { onStdoutLine() {}, onStderrLine() {} },
+      { retries: 2, delayMs: 3000, retryOn: /Connection refused|Connection reset|Connection timed out/i },
+    );
   }
 
   const combinedOutput = `${result.stdout || ""}${result.stderr ? `\n${result.stderr}` : ""}`.trim();

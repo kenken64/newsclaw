@@ -23,11 +23,10 @@ type RestoreJob = {
 type Props = {
   initialRestoreJob: RestoreJob | null;
   missingConfig: string[];
-  providerName: string;
   userEmail: string;
 };
 
-export function RestoreInstanceClient({ initialRestoreJob, missingConfig, providerName, userEmail }: Props) {
+export function RestoreInstanceClient({ initialRestoreJob, missingConfig, userEmail }: Props) {
   const router = useRouter();
   const [restoreJob, setRestoreJob] = useState<RestoreJob | null>(initialRestoreJob);
   const [busy, setBusy] = useState(false);
@@ -172,7 +171,7 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig, provid
         <CardHeader>
           <CardTitle className="text-2xl">Restore OpenClaw workspace</CardTitle>
           <CardDescription className="text-sm leading-6 text-slate-600">
-            NewsClaw uses ClawMacdo to restore the {providerName} snapshot and capture the deployment metadata required for the pairing step.
+            NewsClaw uses ClawMacdo to restore the snapshot and capture the deployment metadata required for the pairing step.
           </CardDescription>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             Restoring workspace for <span className="font-medium text-slate-950">{userEmail}</span>
@@ -222,13 +221,6 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig, provid
             <p className="mt-4 text-sm text-slate-600">{restoreJob?.stepLabel ?? "Preparing restore job..."}</p>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Latest output</p>
-            <pre className="mt-4 max-h-72 overflow-auto whitespace-pre-wrap text-sm leading-6 text-slate-700">
-              {restoreJob?.rawOutput || "Waiting for ClawMacdo output..."}
-            </pre>
-          </div>
-
           {restoreJob?.status === "failed" ? (
             <Button onClick={() => void startRestore()} disabled={busy} className="w-fit rounded-2xl bg-[color:var(--brand-ink)] text-white hover:bg-[color:var(--brand-ink-strong)]">
               Retry restore
@@ -267,7 +259,7 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig, provid
                 <ServerCog className="size-5" />
               </div>
               <div>
-                <p className="font-medium text-white">{providerName} snapshot</p>
+                <p className="font-medium text-white">Snapshot restore</p>
                 <p className="mt-1 text-slate-300">The restore runs against the pinned snapshot from the environment-selected provider and stores the resulting deployment record locally.</p>
               </div>
             </div>

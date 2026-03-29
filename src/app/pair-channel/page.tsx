@@ -51,6 +51,7 @@ export default async function PairChannelPage() {
 
         <MessagingPairingPanel
           preferredChannel={channelConfig.preferredChannel}
+          userEmail={user.email}
           initialPairing={pairing ? {
             channel: pairing.channel,
             status: pairing.status,

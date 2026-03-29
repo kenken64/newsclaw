@@ -99,7 +99,11 @@ export default async function SetupAgentPage({ searchParams }: SetupAgentPagePro
         <OpenClawAgentForm
           userName={user.name}
           initialAgent={existingAgent ?? undefined}
-          initialChannelConfig={channelConfig ?? undefined}
+          initialChannelConfig={channelConfig ? {
+            preferredChannel: channelConfig.preferredChannel,
+            whatsappPhoneNumber: channelConfig.whatsappPhoneNumber,
+            hasTelegramBotToken: Boolean(channelConfig.telegramBotTokenEncrypted),
+          } : undefined}
           mode={editMode ? "edit" : "create"}
         />
       </div>

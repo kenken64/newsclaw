@@ -125,7 +125,8 @@ export function CategoryDashboard({
         throw new Error(payload.error ?? "Unable to destroy the instance.");
       }
 
-      router.push("/setup-agent");
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/");
       router.refresh();
     } catch (caughtError) {
       setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to destroy the instance.");
@@ -182,6 +183,7 @@ export function CategoryDashboard({
         error?: string;
         remoteRemoved?: boolean;
         removedJobName?: string;
+        warning?: string;
         schedules?: DailyDigestSchedule[];
         liveCronLines?: string[];
         liveCronRecords?: LiveCronRecord[];
@@ -312,6 +314,7 @@ export function CategoryDashboard({
         error?: string;
         remoteRemoved?: boolean;
         removedJobName?: string;
+        warning?: string;
         schedules?: DailyDigestSchedule[];
         liveCronLines?: string[];
         liveCronRecords?: LiveCronRecord[];
@@ -326,7 +329,7 @@ export function CategoryDashboard({
       setDigestSuccess(
         payload.remoteRemoved
           ? `Daily digest removed. OpenClaw cron job ${payload.removedJobName ?? ""} was deleted as well.`.trim()
-          : "Daily digest removed."
+          : payload.warning ?? "Daily digest removed."
       );
 
       void refreshLiveCronJobs();

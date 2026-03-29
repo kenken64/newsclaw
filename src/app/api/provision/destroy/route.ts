@@ -25,8 +25,15 @@ export async function POST(request: Request) {
   }
 
   const restoreJob = getLatestRestoreJobByUserId(user.id);
-  const instance = restoreJob ? getRestoreInstanceIdentifier(restoreJob) : null;
   const config = getProvisioningConfig();
+
+  // For DigitalOcean the deploy_id is a UUID job-tracking value, not the droplet name.
+  // The droplet name is stored in hostname (e.g. "openclaw-acf28631").
+  const instance = restoreJob
+    ? (restoreJob.provider === "digitalocean"
+        ? (restoreJob.hostname || getRestoreInstanceIdentifier(restoreJob))
+        : getRestoreInstanceIdentifier(restoreJob))
+    : null;
 
   let destroyOutput = "";
 
@@ -41,7 +48,7 @@ export async function POST(request: Request) {
         "--yes",
       ]);
 
-      destroyOutput = (result.stdout || result.stderr || "").trim();
+      destroyOutput = (result.stderr || result.stdout || "").trim();
 
       if (result.code !== 0) {
         return NextResponse.json(

@@ -29,7 +29,7 @@ export function SignOutButton() {
   return (
     <Button
       variant="outline"
-      className="h-10 rounded-full border-white/15 bg-white/10 px-4 text-white hover:bg-white/20 hover:text-white"
+      className="h-8 rounded-full border-transparent bg-transparent px-3 text-white hover:bg-white/20 hover:text-white"
       onClick={handleSignOut}
       disabled={busy}
     >

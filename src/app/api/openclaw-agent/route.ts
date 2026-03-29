@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   getLatestRestoreJobByUserId,
   getOpenClawAgentByUserId,
+  getTelegramConfigsWithCompletedPairing,
   getUserChannelConfigByUserId,
   upsertOpenClawAgent,
   upsertUserChannelConfig,
@@ -14,7 +15,7 @@ import {
   runClawmacdoCommand,
   sanitizeProvisioningText,
 } from "@/lib/provisioning";
-import { encryptSecretValue } from "@/lib/secrets";
+import { decryptSecretValue, encryptSecretValue } from "@/lib/secrets";
 import { getCurrentUserFromRequest } from "@/lib/session";
 import { getValidationErrorMessage } from "@/lib/validation";
 
@@ -72,6 +73,24 @@ export async function POST(request: Request) {
       !existingChannelConfig?.telegramBotTokenEncrypted
     ) {
       return NextResponse.json({ error: "Telegram bot token is required." }, { status: 400 });
+    }
+
+    if (body.preferredChannel === "telegram" && body.telegramBotToken) {
+      const activeTelegramConfigs = getTelegramConfigsWithCompletedPairing(user.id);
+      const tokenInUse = activeTelegramConfigs.some((config) => {
+        try {
+          return decryptSecretValue(config.telegram_bot_token_encrypted) === body.telegramBotToken;
+        } catch {
+          return false;
+        }
+      });
+
+      if (tokenInUse) {
+        return NextResponse.json(
+          { error: "This Telegram bot token is already paired with another account. Use a different bot token." },
+          { status: 400 },
+        );
+      }
     }
 
     const shouldSyncSkills = skillInputsChanged(existingAgent, {

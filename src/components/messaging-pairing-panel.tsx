@@ -24,9 +24,10 @@ type Pairing = {
 type Props = {
   preferredChannel: "whatsapp" | "telegram";
   initialPairing: Pairing | null;
+  userEmail: string;
 };
 
-export function MessagingPairingPanel({ preferredChannel, initialPairing }: Props) {
+export function MessagingPairingPanel({ preferredChannel, initialPairing, userEmail }: Props) {
   const router = useRouter();
   const [pairing, setPairing] = useState<Pairing | null>(initialPairing);
   const [busy, setBusy] = useState(false);
@@ -306,6 +307,10 @@ export function MessagingPairingPanel({ preferredChannel, initialPairing }: Prop
                 <p className="mt-1 text-slate-300">{pairing?.status ?? "Starting pairing..."}</p>
               </div>
             </div>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Account</p>
+            <p className="mt-2 break-all font-medium text-white">{userEmail}</p>
           </div>
         </CardContent>
       </Card>
