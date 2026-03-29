@@ -136,7 +136,7 @@ flowchart TD
 flowchart TD
     D0["/dashboard loads"] --> D1["Fetch daily digest schedules from DB\nFetch live cron jobs from instance"]
 
-    subgraph Daily Digests
+    subgraph dd[Daily Digests]
         DD1["User sets time + recipient + prompt"] --> DD2["POST /api/daily-digest\nConvert SGT to UTC\nRun: clawmacdo cron-message"]
         DD2 --> DD3["Schedule saved in DB\nLive cron job created on instance"]
 
@@ -146,7 +146,7 @@ flowchart TD
         DD8[View live schedules] --> DD9["GET /api/daily-digest\nRun: clawmacdo cron-list, parse output"]
     end
 
-    subgraph Instance Management
+    subgraph im[Instance Management]
         IM1[Edit preferred topics] --> IM2["/setup-agent?edit=1\nUpdate agent + async skill redeploy"]
         IM3[Destroy instance] --> IM4{"Any active\ndigest schedules?"}
         IM4 -- Yes --> IM5[Block: remove schedules first]
@@ -155,8 +155,8 @@ flowchart TD
         IM7 --> IM8["POST /api/auth/logout\nClear session, redirect to /"]
     end
 
-    D0 --> Daily Digests
-    D0 --> Instance Management
+    D0 --> dd
+    D0 --> im
 ```
 
 ---
