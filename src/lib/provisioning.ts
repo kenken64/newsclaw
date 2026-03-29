@@ -29,6 +29,9 @@ const PROVISIONING_NOISE_PATTERNS = [
   /^[-\\/|]+$/u,
   /Config warnings:.*plugins\.entries\.\w+:\s*plugin not found/u,
   /^-\s*plugins\.entries\.\w+:\s*plugin not found/u,
+  /plugins\.entries\.\w+:\s*plugin not found/u,
+  /stale config entry ignored/u,
+  /^[│├╮╯◇─╭╰┤┌┐└┘┬┴┼]+$/u,
 ];
 
 type WorkerPayload =

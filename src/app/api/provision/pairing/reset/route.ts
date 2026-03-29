@@ -155,8 +155,10 @@ export async function POST(request: Request) {
     });
   } else {
     const updatedConfig = getUserChannelConfigByUserId(user.id);
+    const phoneChanged = body.whatsAppPhoneNumber && body.whatsAppPhoneNumber !== channelConfig.whatsappPhoneNumber;
+
     spawnProvisioningWorker({
-      mode: "whatsapp-setup",
+      mode: phoneChanged ? "whatsapp-setup" : "whatsapp-refresh",
       restoreJobId: restoreJob.id,
       userId: user.id,
       instance: instanceIdentifier,

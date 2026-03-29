@@ -18,6 +18,8 @@ import {
 import {
   CheckCircle2,
   Clock3,
+  Eye,
+  EyeOff,
   LoaderCircle,
   MessageCircle,
   Phone,
@@ -74,6 +76,13 @@ type LiveCronRecord = {
   model: string;
 };
 
+function maskDeliveryTarget(target: string, channel: "whatsapp" | "telegram") {
+  if (!target) return "Legacy target";
+  if (channel === "telegram") return target;
+  if (target.length <= 4) return target;
+  return target.slice(0, -4).replace(/\d/g, "*") + target.slice(-4);
+}
+
 function getCurrentSingaporeTime() {
   const formatter = new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
@@ -96,6 +105,7 @@ export function CategoryDashboard({
   pairedChannels,
 }: Props) {
   const [digestTime, setDigestTime] = useState("08:00");
+  const [showDigestPhone, setShowDigestPhone] = useState(false);
   const [digestChannel, setDigestChannel] = useState<"whatsapp" | "telegram">(initialPreferredChannel);
   const [digestRecipient, setDigestRecipient] = useState(
     initialPreferredChannel === "whatsapp" ? initialDeliveryTarget.replace(/^\+65/, "") : initialDeliveryTarget
@@ -368,7 +378,7 @@ export function CategoryDashboard({
       setDigestPrompt("");
 
       setDigestSuccess(
-        `Daily digest scheduled for ${payload.scheduledTime ?? digestTime} SGT (${payload.scheduledUtcTime ?? digestTime} UTC) via ${payload.deliveryChannel ?? initialPreferredChannel} to ${payload.deliveryTarget ?? recipient}.`
+        `Daily digest scheduled for ${payload.scheduledTime ?? digestTime} SGT (${payload.scheduledUtcTime ?? digestTime} UTC) via ${payload.deliveryChannel ?? digestChannel} to ${maskDeliveryTarget(payload.deliveryTarget ?? recipient, payload.deliveryChannel ?? digestChannel)}.`
       );
 
       void refreshLiveCronJobs();
@@ -579,22 +589,33 @@ export function CategoryDashboard({
                   ) : (
                     <div className="grid gap-2">
                       <Label htmlFor="daily-digest-recipient" className="text-slate-700">{deliveryTargetLabel}</Label>
-                      <div className="flex">
+                      <div className="relative flex">
                         <span className="inline-flex items-center rounded-l-md border border-r-0 border-slate-200 bg-slate-100 px-3 text-sm text-slate-600">+65</span>
                         <Input
                           id="daily-digest-recipient"
-                          type="text"
+                          type={showDigestPhone ? "text" : "password"}
                           value={digestRecipient}
                           onChange={(event) => {
                             const value = event.target.value.replace(/\D/g, "").slice(0, 8);
                             setDigestRecipient(value);
                           }}
+                          onFocus={() => setShowDigestPhone(true)}
+                          onBlur={() => setShowDigestPhone(false)}
                           disabled={digestBusy}
                           placeholder={deliveryTargetPlaceholder}
                           maxLength={8}
                           inputMode="numeric"
-                          className="rounded-l-none border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
+                          className="rounded-l-none pr-11 border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
                         />
+                        <button
+                          type="button"
+                          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 transition hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => setShowDigestPhone((v) => !v)}
+                          aria-label={showDigestPhone ? "Hide phone number" : "Show phone number"}
+                          disabled={digestBusy}
+                        >
+                          {showDigestPhone ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
                       </div>
                     </div>
                   )}
@@ -626,7 +647,7 @@ export function CategoryDashboard({
                       )}
                       <p className="text-xs text-slate-500">{schedule.utcTime} UTC</p>
                       <p className="text-xs text-slate-500">
-                        {schedule.deliveryChannel === "telegram" ? "Telegram" : "WhatsApp"}: {schedule.deliveryTarget || "Legacy target"}
+                        {schedule.deliveryChannel === "telegram" ? "Telegram" : "WhatsApp"}: {maskDeliveryTarget(schedule.deliveryTarget, schedule.deliveryChannel)}
                       </p>
                       {schedule.promptText ? <p className="mt-2 text-xs leading-5 text-slate-600">{schedule.promptText}</p> : null}
                     </div>

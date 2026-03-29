@@ -127,7 +127,12 @@ function sanitizeLiveCronOutput(output: string) {
     .filter((line) => !/OpenGuardrails dashboard started/iu.test(line))
     .filter((line) => !/Gateway port .* is still in use after waiting/iu.test(line))
     .filter((line) => !/^Config warnings:/iu.test(line))
+    .filter((line) => !/Config warnings:.*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
     .filter((line) => !/^-\s*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
+    .filter((line) => !/plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
+    .filter((line) => !/^[│├╮╯◇─╭╰┤┌┐└┘┬┴┼▐▌░▒▓█]+$/u.test(line.replace(/\s/g, "")))
+    .filter((line) => !/^[│╮╯◇]\s*Config warnings/iu.test(line))
+    .filter((line) => !/stale config entry ignored/iu.test(line))
     .join("\n")
     .trim();
 }

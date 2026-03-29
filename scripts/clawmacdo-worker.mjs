@@ -231,6 +231,39 @@ function hasCompletedWhatsAppLink(output) {
   );
 }
 
+function getCleanStalePluginsCommand() {
+  const configPath = `${OPENCLAW_HOME}/.openclaw/openclaw.json`;
+  return `python3 -c "
+import json, os
+p = '${configPath}'
+if not os.path.exists(p):
+    exit(0)
+d = json.load(open(p))
+entries = d.get('plugins', {}).get('entries', {})
+stale = [k for k in entries if k not in ('whatsapp', 'telegram', 'webchat')]
+if stale:
+    for k in stale:
+        del entries[k]
+    with open(p, 'w') as f:
+        json.dump(d, f, indent=2)
+    print('Removed stale plugins:', ', '.join(stale))
+" 2>/dev/null || true`;
+}
+
+async function cleanStalePluginsOnInstance(restoreJobId) {
+  try {
+    await withRestoreSshConnection(restoreJobId, async (connection) => {
+      await runSshCommand({
+        ...connection,
+        remoteCommand: getOpenClawRemoteShell(connection.sshUser),
+        stdinScript: getCleanStalePluginsCommand(),
+      });
+    });
+  } catch (_ignored) {
+    // Non-fatal: stale plugins cause noise but don't break core functionality.
+  }
+}
+
 function getWhatsAppSetupCommand(phoneNumber) {
   const envFile = `${OPENCLAW_HOME}/.openclaw/.env`;
   const pathValue = `${OPENCLAW_HOME}/.local/bin:${OPENCLAW_HOME}/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin`;
@@ -644,6 +677,8 @@ async function runRestore() {
     metadata.ssh_private_key_encrypted = encryptPrivateKey(privateKey, encryptionSecret);
   }
 
+  await cleanStalePluginsOnInstance(payload.jobId);
+
   updateRestoreJob(payload.jobId, {
     status: "completed",
     current_step: totalSteps,
@@ -687,6 +722,8 @@ process.on("SIGTERM", cancelRestoreFromSignal);
 process.on("SIGINT", cancelRestoreFromSignal);
 
 async function runMessagingSetup(mode) {
+  await cleanStalePluginsOnInstance(payload.restoreJobId);
+
   const pairingStatus = mode === "telegram-setup" ? "awaiting_code" : "fetching_qr";
 
   upsertMessagingPairing({
@@ -836,6 +873,8 @@ async function runPluginInstall() {
     appendRestoreOutput(payload.restoreJobId, `[plugin] No instance identifier, skipping plugin install.\n`);
     return;
   }
+
+  await cleanStalePluginsOnInstance(payload.restoreJobId);
 
   if (RESTORE_PLUGIN_INSTALL_DELAY_MS > 0) {
     appendRestoreOutput(payload.restoreJobId, `[plugin] Waiting ${RESTORE_PLUGIN_INSTALL_DELAY_MS}ms before plugin installation\n`);
