@@ -11,11 +11,11 @@ flowchart TD
     C --> E["Sign up / Sign in\nvia passkey"]
     E --> D
 
-    D -- No agent --> F[/setup-agent]
+    D -- No agent --> F["/setup-agent"]
     D -- No channel config --> G["/setup-agent?edit=1"]
-    D -- Restore not completed --> H[/restore-instance]
-    D -- Pairing not completed --> I[/pair-channel]
-    D -- All steps done --> J[/dashboard]
+    D -- Restore not completed --> H["/restore-instance"]
+    D -- Pairing not completed --> I["/pair-channel"]
+    D -- All steps done --> J["/dashboard"]
 
     F --> F1[Save agent + channel config] --> H
     G --> G1[Update channel config] --> H
@@ -134,7 +134,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    D0[/dashboard loads] --> D1["Fetch daily digest schedules from DB\nFetch live cron jobs from instance"]
+    D0["/dashboard loads"] --> D1["Fetch daily digest schedules from DB\nFetch live cron jobs from instance"]
 
     subgraph Daily Digests
         DD1["User sets time + recipient + prompt"] --> DD2["POST /api/daily-digest\nConvert SGT to UTC\nRun: clawmacdo cron-message"]
