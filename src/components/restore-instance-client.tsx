@@ -196,12 +196,13 @@ export function RestoreInstanceClient({ initialRestoreJob, missingConfig, userEm
             </div>
           ) : null}
 
-          <div className="flex justify-start">
-            <Button onClick={() => void handleBackToSetup()} disabled={busy || cancelBusy} variant="outline" className="w-fit rounded-2xl">
-              {cancelBusy ? <LoaderCircle className="animate-spin" /> : null}
-              {hasActiveRestore ? "Cancel and return to setup" : "Back to setup"}
-            </Button>
-          </div>
+          {!hasActiveRestore ? (
+            <div className="flex justify-start">
+              <Button onClick={() => void handleBackToSetup()} disabled={busy || cancelBusy} variant="outline" className="w-fit rounded-2xl">
+                Back to setup
+              </Button>
+            </div>
+          ) : null}
 
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
             <div className="flex items-center justify-between gap-4">

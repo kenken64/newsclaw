@@ -34,6 +34,8 @@ export function MessagingPairingPanel({ preferredChannel, initialPairing, userEm
   const [error, setError] = useState<string | null>(null);
   const [challengeCode, setChallengeCode] = useState("");
   const [qrCountdown, setQrCountdown] = useState<number | null>(null);
+  const [fetchElapsed, setFetchElapsed] = useState<number | null>(null);
+  const fetchStartRef = useRef<number | null>(null);
   const canReuseInitialPairing = Boolean(
     initialPairing &&
       (
@@ -129,6 +131,28 @@ export function MessagingPairingPanel({ preferredChannel, initialPairing, userEm
 
     drawQrRowsToCanvas(canvas, rows, { scale: 7, quietZone: 4 });
   }, [pairing?.qrOutput]);
+
+  useEffect(() => {
+    const isFetching = pairing?.status === "fetching_qr";
+
+    if (isFetching && fetchStartRef.current === null) {
+      fetchStartRef.current = Date.now();
+    } else if (!isFetching) {
+      fetchStartRef.current = null;
+      setFetchElapsed(null);
+      return;
+    }
+
+    const updateElapsed = () => {
+      if (fetchStartRef.current !== null) {
+        setFetchElapsed(Math.floor((Date.now() - fetchStartRef.current) / 1000));
+      }
+    };
+
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [pairing?.status]);
 
   useEffect(() => {
     if (!pairing?.lastUpdatedAt || preferredChannel !== "whatsapp" || pairing.status !== "qr_ready") {
@@ -228,7 +252,11 @@ export function MessagingPairingPanel({ preferredChannel, initialPairing, userEm
                     </p>
                   </div>
                 ) : (
-                  <pre className="overflow-auto whitespace-pre text-sm leading-5 text-slate-800">{extractedQrOutput || "Waiting for QR output..."}</pre>
+                  <div className="flex flex-col items-center gap-3 py-6 text-sm text-slate-500">
+                    <LoaderCircle className="size-8 animate-spin text-slate-400" />
+                    <p>{extractedQrOutput || "Fetching WhatsApp QR code..."}</p>
+                    {fetchElapsed !== null ? <p className="font-mono text-xs text-slate-400">{fetchElapsed}s elapsed</p> : null}
+                  </div>
                 )}
               </div>
               <p className="mt-4 text-sm leading-6 text-slate-600">{pairing?.instructionText || "Scan the QR code with the WhatsApp app to finish channel setup."}</p>

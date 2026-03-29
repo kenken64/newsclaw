@@ -1,6 +1,9 @@
-# OpenClaw Category Guide for Kenneth Signal Desk
+# OpenClaw NewsClaw - Category Guide
 
-Region focus: **Asia, with emphasis on Southeast Asia**
+This file summarizes the related coverage categories for Kenneth Signal Desk and shows how they connect to the saved preferred topics.
+
+Region focus:
+Asia, with emphasis on Southeast Asia
 
 Preferred topics:
 - AI regulation
@@ -8,149 +11,110 @@ Preferred topics:
 - enterprise security
 - venture funding
 - M&A
-- Sports
+- HR
 
-This guide maps the saved topics to the available coverage categories and gives query ideas for OpenClaw monitoring.
+## Technology (technology)
 
-## Technology (`technology`)
+AI, product launches, developer ecosystems, and platform changes.
 
-**What it covers:** AI, product launches, developer ecosystems, and platform changes.
+How it relates to the saved topics:
+- Best fit for AI regulation when the issue involves AI products, model launches, or platform policy changes.
+- Strong for product launches across consumer, enterprise, and developer tools.
+- Useful for enterprise security when the story involves cloud platforms, identity, endpoint, or security tooling.
 
-**Why it matters for this desk:**
-- Best home for AI regulation signals when they involve product behavior, model releases, or platform governance
-- Strong fit for product launches across consumer and enterprise tech in Asia/Southeast Asia
-- Useful for security-adjacent product updates and developer ecosystem shifts
+Targeted query ideas:
+- "Technology news Asia Southeast Asia latest"
+- "AI regulation Asia Southeast Asia technology"
+- "product launches Asia Southeast Asia technology"
+- "enterprise security Asia Southeast Asia technology"
+- "AI product launch Singapore OR Indonesia OR ASEAN"
+- "enterprise software rollout Southeast Asia"
 
-**Targeted query ideas:**
-- `OpenClaw search: "Technology Asia latest"`
-- `OpenClaw search: "AI regulation Southeast Asia technology"`
-- `OpenClaw search: "product launch Singapore technology"`
-- `OpenClaw search: "enterprise security Asia platform update"`
-- `OpenClaw monitor: technology AND (AI OR launch OR security) AND (Singapore OR Indonesia OR Vietnam)`
+## World Affairs (world)
 
-## World Affairs (`world`)
+Geopolitics, diplomacy, conflicts, and international policy.
 
-**What it covers:** Geopolitics, diplomacy, conflicts, and international policy.
+How it relates to the saved topics:
+- Useful when AI regulation is driven by cross-border policy, export controls, or international standards.
+- Helps track regional tensions that affect enterprise security, supply chains, or market access.
+- Relevant for M&A when deals face geopolitical scrutiny or foreign investment concerns.
 
-**Why it matters for this desk:**
-- Captures cross-border policy shifts that affect AI regulation and digital trade
-- Useful when Southeast Asia developments are shaped by diplomacy, sanctions, or regional tensions
-- Helps contextualize sports or business stories with international significance
+Targeted query ideas:
+- "World Affairs news Asia Southeast Asia latest"
+- "AI regulation Asia Southeast Asia geopolitics"
+- "cross-border policy Southeast Asia technology"
+- "foreign investment review M&A Southeast Asia"
+- "regional tensions enterprise security Asia"
 
-**Targeted query ideas:**
-- `OpenClaw search: "World Affairs Asia latest"`
-- `OpenClaw search: "ASEAN policy diplomacy technology"`
-- `OpenClaw search: "Singapore regional tensions business impact"`
-- `OpenClaw search: "Southeast Asia international policy AI"`
-- `OpenClaw monitor: world AND (ASEAN OR Southeast Asia) AND (policy OR diplomacy)`
+## Business (business)
 
-## Business (`business`)
+Markets, executive shifts, company strategy, and earnings moves.
 
-**What it covers:** Markets, executive shifts, company strategy, and earnings moves.
+How it relates to the saved topics:
+- Core category for venture funding, M&A, and HR moves such as layoffs, hiring freezes, and leadership changes.
+- Useful for product launch context when launches are tied to strategy, revenue, or competitive positioning.
+- Helps identify which companies are scaling, consolidating, or retrenching in Southeast Asia.
 
-**Why it matters for this desk:**
-- Best category for venture funding, M&A, and company strategy updates
-- Useful for launch impact, investor reaction, and regional expansion moves
-- Helps track corporate activity across Singapore, Indonesia, Malaysia, Thailand, and Vietnam
+Targeted query ideas:
+- "Business news Asia Southeast Asia latest"
+- "venture funding Asia Southeast Asia business"
+- "M&A Asia Southeast Asia business"
+- "HR layoffs hiring freeze Asia Southeast Asia business"
+- "executive changes tech company Southeast Asia"
 
-**Targeted query ideas:**
-- `OpenClaw search: "Business Asia latest funding"`
-- `OpenClaw search: "venture funding Southeast Asia business"`
-- `OpenClaw search: "M&A Singapore business"`
-- `OpenClaw search: "product launch Asia company strategy"`
-- `OpenClaw monitor: business AND (funding OR acquisition OR earnings) AND Southeast Asia`
+## Policy (policy)
 
-## Policy (`policy`)
+Regulation, legislation, public sector decisions, and compliance.
 
-**What it covers:** Regulation, legislation, public sector decisions, and compliance.
+How it relates to the saved topics:
+- Best fit for AI regulation, data rules, platform compliance, and cybersecurity mandates.
+- Important for enterprise security when governments issue incident reporting or critical infrastructure requirements.
+- Useful for M&A when policy affects antitrust, approvals, or foreign ownership.
 
-**Why it matters for this desk:**
-- Primary category for AI regulation and compliance-driven monitoring
-- Important for cybersecurity mandates, data rules, and public-sector procurement
-- Useful for tracking formal action by ministries, regulators, and legislatures
-
-**Targeted query ideas:**
-- `OpenClaw search: "Policy Asia latest regulation"`
-- `OpenClaw search: "AI regulation Singapore policy"`
-- `OpenClaw search: "enterprise security compliance Southeast Asia policy"`
-- `OpenClaw search: "data protection Vietnam regulation"`
-- `OpenClaw monitor: policy AND (AI OR cybersecurity OR compliance) AND ASEAN`
-
-## Sports (`sports`)
-
-**What it covers:** Major league developments, global competitions, and standout performances.
-
-**Why it matters for this desk:**
-- Direct match for the Sports preferred topic
-- Useful for regional tournaments, athlete performance, and event-driven news spikes
-- Can be monitored for sponsorship, media, and commercial implications in Asia/Southeast Asia
-
-**Targeted query ideas:**
-- `OpenClaw search: "Sports Asia latest"`
-- `OpenClaw search: "Southeast Asia sports tournament results"`
-- `OpenClaw search: "Singapore athlete performance"`
-- `OpenClaw search: "ASEAN football latest"`
-- `OpenClaw monitor: sports AND (Southeast Asia OR ASEAN OR Singapore)`
+Targeted query ideas:
+- "Policy news Asia Southeast Asia latest"
+- "AI regulation Asia Southeast Asia policy"
+- "data protection AI rules Singapore Malaysia Indonesia"
+- "cybersecurity regulation Southeast Asia"
+- "M&A approval antitrust Southeast Asia policy"
 
 ## Preferred-topic-specific search suggestions
 
-Use these when you want a focused OpenClaw watchlist or alert set.
+Use these when you want tighter monitoring around the saved topics:
 
-### AI regulation
-- `OpenClaw search: "AI regulation Asia breaking"`
-- `OpenClaw search: "AI regulation Southeast Asia latest"`
-- `OpenClaw search: "AI governance Singapore policy"`
-- `OpenClaw search: "AI compliance ASEAN"`
+- AI regulation:
+  - "AI regulation Asia Southeast Asia bill rule consultation enforcement"
+  - "AI governance Singapore Indonesia Malaysia Thailand Vietnam Philippines"
+  - "model risk compliance AI policy ASEAN"
 
-### Product launches
-- `OpenClaw search: "product launches Asia breaking"`
-- `OpenClaw search: "product launch Southeast Asia latest"`
-- `OpenClaw search: "new app Singapore launch"`
-- `OpenClaw search: "enterprise product launch Indonesia"`
+- Product launches:
+  - "product launch Asia Southeast Asia announcement rollout beta"
+  - "new platform feature enterprise launch Singapore"
+  - "APAC product release developer tools Southeast Asia"
 
-### Enterprise security
-- `OpenClaw search: "enterprise security Asia breach"`
-- `OpenClaw search: "enterprise security Southeast Asia incident"`
-- `OpenClaw search: "ransomware Singapore latest"`
-- `OpenClaw search: "cloud security Vietnam advisory"`
+- Enterprise security:
+  - "enterprise security Asia Southeast Asia breach incident advisory"
+  - "cloud security identity access management Southeast Asia"
+  - "ransomware Asia Southeast Asia company"
 
-### Venture funding
-- `OpenClaw search: "venture funding Asia latest"`
-- `OpenClaw search: "venture funding Southeast Asia startup round"`
-- `OpenClaw search: "Singapore startup funding"`
-- `OpenClaw search: "Indonesia seed round"`
+- Venture funding:
+  - "venture funding Asia Southeast Asia seed Series A Series B"
+  - "startup funding Singapore Indonesia Malaysia"
+  - "AI startup funding Southeast Asia"
 
-### M&A
-- `OpenClaw search: "M&A Asia latest"`
-- `OpenClaw search: "M&A Southeast Asia deal"`
-- `OpenClaw search: "acquisition Singapore company"`
-- `OpenClaw search: "cross-border merger ASEAN"`
+- M&A:
+  - "M&A Asia Southeast Asia acquisition merger takeover"
+  - "strategic acquisition tech company Singapore"
+  - "cross-border deal Southeast Asia technology"
 
-### Sports
-- `OpenClaw search: "Sports Asia breaking"`
-- `OpenClaw search: "Sports Southeast Asia latest"`
-- `OpenClaw search: "regional tournament results ASEAN"`
-- `OpenClaw search: "Singapore sports event"`
+- HR:
+  - "HR Asia Southeast Asia layoffs restructuring hiring freeze"
+  - "headcount reduction tech company Singapore"
+  - "talent acquisition compensation policy Southeast Asia"
 
-## Practical OpenClaw monitoring pattern
+## Practical monitoring tips
 
-For routine monitoring, combine:
-- one **topic query**
-- one **country or subregion modifier**
-- one **category filter** when needed
-
-Examples:
-- `OpenClaw monitor: AI regulation AND Singapore AND policy`
-- `OpenClaw monitor: venture funding AND Southeast Asia AND business`
-- `OpenClaw monitor: enterprise security AND ASEAN AND technology`
-- `OpenClaw monitor: M&A AND Indonesia AND business`
-- `OpenClaw monitor: Sports AND Singapore AND sports`
-
-## Escalation cues
-
-Prioritize items that mention:
-- new law, draft rule, enforcement, or compliance deadline
-- major funding round, acquisition, or strategic investment
-- breach, outage, ransomware, or critical vulnerability
-- product launch with regional availability or pricing
-- major tournament result, qualification, or athlete milestone
+- Combine topic + country + company for high precision.
+- Add "latest", "breaking", "announced", "filed", or "approved" for current developments.
+- For recurring scans, search both broad terms and named entities.
+- If a story spans multiple categories, classify it by the dominant business impact first.
