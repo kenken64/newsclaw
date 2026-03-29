@@ -541,6 +541,59 @@ function initDatabase(database: Database.Database) {
   ensureColumn(database, "daily_digest_schedules", "delivery_channel", "TEXT NOT NULL DEFAULT 'whatsapp'");
   ensureColumn(database, "daily_digest_schedules", "delivery_target", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(database, "daily_digest_schedules", "prompt_text", "TEXT NOT NULL DEFAULT ''");
+
+  migrateMessagingPairingsUniqueConstraint(database);
+}
+
+function migrateMessagingPairingsUniqueConstraint(database: Database.Database) {
+  const indexInfo = database
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='messaging_pairings'")
+    .get() as { sql: string } | undefined;
+
+  if (!indexInfo?.sql) {
+    return;
+  }
+
+  // Already migrated if UNIQUE(user_id, channel) exists
+  if (/UNIQUE\s*\(\s*user_id\s*,\s*channel\s*\)/i.test(indexInfo.sql)) {
+    return;
+  }
+
+  // Only migrate if the old UNIQUE on user_id alone exists
+  if (!/user_id\s+TEXT\s+NOT\s+NULL\s+UNIQUE/i.test(indexInfo.sql)) {
+    return;
+  }
+
+  database.exec(`
+    BEGIN IMMEDIATE;
+
+    CREATE TABLE messaging_pairings_v2 (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      restore_job_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      status TEXT NOT NULL,
+      qr_output TEXT,
+      instruction_text TEXT,
+      pairing_code TEXT,
+      error_message TEXT,
+      last_updated_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (user_id, channel),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (restore_job_id) REFERENCES restore_jobs(id) ON DELETE CASCADE
+    );
+
+    INSERT INTO messaging_pairings_v2
+      SELECT * FROM messaging_pairings;
+
+    DROP TABLE messaging_pairings;
+
+    ALTER TABLE messaging_pairings_v2 RENAME TO messaging_pairings;
+
+    COMMIT;
+  `);
 }
 
 function ensureColumn(database: Database.Database, tableName: string, columnName: string, definition: string) {
@@ -1171,12 +1224,52 @@ export function getTelegramConfigsWithCompletedPairing(excludeUserId: string) {
   `).all(excludeUserId) as Array<{ telegram_bot_token_encrypted: string }>;
 }
 
+export function isWhatsAppNumberPairedByOtherUser(phoneNumber: string, excludeUserId: string) {
+  const row = db.prepare(`
+    SELECT ucc.user_id
+    FROM user_channel_configs ucc
+    INNER JOIN messaging_pairings mp ON mp.user_id = ucc.user_id
+    WHERE ucc.preferred_channel = 'whatsapp'
+      AND ucc.whatsapp_phone_number = ?
+      AND ucc.user_id != ?
+      AND mp.status = 'completed'
+      AND mp.channel = 'whatsapp'
+    LIMIT 1
+  `).get(phoneNumber, excludeUserId) as { user_id: string } | undefined;
+
+  return Boolean(row);
+}
+
 export function getMessagingPairingByUserId(userId: string) {
   const row = db
-    .prepare("SELECT * FROM messaging_pairings WHERE user_id = ?")
+    .prepare("SELECT * FROM messaging_pairings WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1")
     .get(userId) as MessagingPairingRow | undefined;
 
   return row ? mapMessagingPairing(row) : null;
+}
+
+export function getMessagingPairingByUserIdAndChannel(userId: string, channel: "whatsapp" | "telegram") {
+  const row = db
+    .prepare("SELECT * FROM messaging_pairings WHERE user_id = ? AND channel = ?")
+    .get(userId, channel) as MessagingPairingRow | undefined;
+
+  return row ? mapMessagingPairing(row) : null;
+}
+
+export function getMessagingPairingsByUserId(userId: string) {
+  const rows = db
+    .prepare("SELECT * FROM messaging_pairings WHERE user_id = ? ORDER BY channel ASC")
+    .all(userId) as MessagingPairingRow[];
+
+  return rows.map(mapMessagingPairing);
+}
+
+export function getCompletedPairingChannels(userId: string) {
+  const rows = db
+    .prepare("SELECT channel FROM messaging_pairings WHERE user_id = ? AND status = 'completed'")
+    .all(userId) as Array<{ channel: string }>;
+
+  return rows.map((r) => r.channel as "whatsapp" | "telegram");
 }
 
 export function upsertMessagingPairing(input: {
@@ -1190,17 +1283,16 @@ export function upsertMessagingPairing(input: {
   errorMessage?: string | null;
   lastUpdatedAt?: string | null;
 }) {
-  const existing = getMessagingPairingByUserId(input.userId);
+  const existing = getMessagingPairingByUserIdAndChannel(input.userId, input.channel);
   const timestamp = new Date().toISOString();
 
   if (existing) {
     db.prepare(
       `UPDATE messaging_pairings
-       SET restore_job_id = ?, channel = ?, status = ?, qr_output = ?, instruction_text = ?, pairing_code = ?, error_message = ?, last_updated_at = ?, updated_at = ?
-       WHERE user_id = ?`
+       SET restore_job_id = ?, status = ?, qr_output = ?, instruction_text = ?, pairing_code = ?, error_message = ?, last_updated_at = ?, updated_at = ?
+       WHERE user_id = ? AND channel = ?`
     ).run(
       input.restoreJobId,
-      input.channel,
       input.status,
       input.qrOutput ?? existing.qrOutput,
       input.instructionText ?? existing.instructionText,
@@ -1209,9 +1301,10 @@ export function upsertMessagingPairing(input: {
       input.lastUpdatedAt === undefined ? existing.lastUpdatedAt : input.lastUpdatedAt,
       timestamp,
       input.userId,
+      input.channel,
     );
 
-    return getMessagingPairingByUserId(input.userId)!;
+    return getMessagingPairingByUserIdAndChannel(input.userId, input.channel)!;
   }
 
   const record: MessagingPairingRecord = {

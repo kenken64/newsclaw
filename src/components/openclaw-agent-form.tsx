@@ -86,7 +86,7 @@ export function OpenClawAgentForm({
     initialChannelConfig?.preferredChannel ?? "whatsapp"
   );
   const [whatsAppPhoneNumber, setWhatsAppPhoneNumber] = useState(
-    initialChannelConfig?.whatsappPhoneNumber ?? ""
+    (initialChannelConfig?.whatsappPhoneNumber ?? "").replace(/^\+65/, "")
   );
   const [showWhatsAppPhoneNumber, setShowWhatsAppPhoneNumber] = useState(false);
   const [isWhatsAppPhoneFocused, setIsWhatsAppPhoneFocused] = useState(false);
@@ -167,7 +167,12 @@ export function OpenClawAgentForm({
     }
 
     if (preferredChannel === "whatsapp" && !whatsAppPhoneNumber.trim()) {
-      setError("Enter the WhatsApp phone number that should receive the pairing QR.");
+      setError("Enter the WhatsApp mobile number that should receive the pairing QR.");
+      return;
+    }
+
+    if (preferredChannel === "whatsapp" && !/^[89]\d{7}$/.test(whatsAppPhoneNumber.trim())) {
+      setError("Enter a valid Singapore mobile number (8 digits starting with 8 or 9).");
       return;
     }
 
@@ -190,7 +195,7 @@ export function OpenClawAgentForm({
           trackingTopics: finalTopics,
           region,
           preferredChannel,
-          whatsAppPhoneNumber,
+          whatsAppPhoneNumber: whatsAppPhoneNumber.trim() ? `+65${whatsAppPhoneNumber.trim()}` : "",
           telegramBotToken,
         }),
       });
@@ -367,17 +372,23 @@ export function OpenClawAgentForm({
           {preferredChannel === "whatsapp" ? (
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="whatsapp-phone-number">WhatsApp phone number</Label>
-                <div className="relative">
+                <Label htmlFor="whatsapp-phone-number">WhatsApp phone number (Singapore)</Label>
+                <div className="relative flex">
+                  <span className="inline-flex items-center rounded-l-md border border-r-0 border-slate-200 bg-slate-100 px-3 text-sm text-slate-600">+65</span>
                   <Input
                     id="whatsapp-phone-number"
                     type={showWhatsAppPhoneNumber || isWhatsAppPhoneFocused ? "text" : "password"}
                     value={whatsAppPhoneNumber}
-                    onChange={(event) => setWhatsAppPhoneNumber(event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value.replace(/\D/g, "").slice(0, 8);
+                      setWhatsAppPhoneNumber(value);
+                    }}
                     onFocus={() => setIsWhatsAppPhoneFocused(true)}
                     onBlur={() => setIsWhatsAppPhoneFocused(false)}
-                    placeholder="+6512345678"
-                    className="pr-11"
+                    placeholder="91234567"
+                    maxLength={8}
+                    inputMode="numeric"
+                    className="rounded-l-none pr-11"
                     disabled={busy}
                   />
                   <button
@@ -391,7 +402,7 @@ export function OpenClawAgentForm({
                     {showWhatsAppPhoneNumber ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-slate-500">This number is passed to ClawMacdo during WhatsApp setup so the pairing QR is generated for the correct user.</p>
+                <p className="text-xs text-slate-500">Singapore mobile number (8 digits starting with 8 or 9). This is passed to ClawMacdo during WhatsApp setup so the pairing QR is generated for the correct user.</p>
               </div>
 
               <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-950">
@@ -514,7 +525,7 @@ export function OpenClawAgentForm({
             <p className="mt-2 leading-6">
               {preferredChannel === "whatsapp"
                 ? (whatsAppPhoneNumber
-                    ? maskPhoneNumber(whatsAppPhoneNumber)
+                    ? maskPhoneNumber(`+65${whatsAppPhoneNumber}`)
                     : "Add a phone number to generate the pairing QR after restore.")
                 : (telegramBotToken
                     ? "Bot token ready to be encrypted and used for Telegram setup."

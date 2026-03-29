@@ -7,6 +7,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  getCompletedPairingChannels,
   getDailyDigestSchedulesByUserId,
   getOpenClawAgentByUserId,
   getUserChannelConfigByUserId,
@@ -107,6 +108,7 @@ export default async function DashboardPage() {
           initialDailyDigestSchedules={dailyDigestSchedules}
           initialPreferredChannel={channelConfig?.preferredChannel ?? "whatsapp"}
           initialDeliveryTarget={initialDeliveryTarget}
+          pairedChannels={getCompletedPairingChannels(user.id)}
         />
       </div>
     </main>

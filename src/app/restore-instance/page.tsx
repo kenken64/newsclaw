@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { RestoreInstanceClient } from "@/components/restore-instance-client";
 import { Badge } from "@/components/ui/badge";
-import { getMessagingPairingByUserId, getOpenClawAgentByUserId, getUserChannelConfigByUserId } from "@/lib/db";
+import { getMessagingPairingsByUserId, getOpenClawAgentByUserId, getUserChannelConfigByUserId } from "@/lib/db";
 import { getLatestRestoreJobByUserId } from "@/lib/db";
 import { getProvisioningReadiness, serializeRestoreJob } from "@/lib/provisioning";
 import { requireUser } from "@/lib/session";
@@ -16,10 +16,10 @@ export default async function RestoreInstancePage() {
   }
 
   const restoreJob = getLatestRestoreJobByUserId(user.id);
-  const pairing = getMessagingPairingByUserId(user.id);
+  const pairings = getMessagingPairingsByUserId(user.id);
   const channelConfig = getUserChannelConfigByUserId(user.id);
   if (restoreJob?.status === "completed") {
-    if (!channelConfig || !pairing || pairing.status !== "completed") {
+    if (!channelConfig || !pairings.some(p => p.status === "completed")) {
       redirect("/pair-channel");
     }
 

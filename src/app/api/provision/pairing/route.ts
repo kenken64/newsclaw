@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   getLatestRestoreJobByUserId,
-  getMessagingPairingByUserId,
+  getMessagingPairingByUserIdAndChannel,
   getUserChannelConfigByUserId,
   upsertMessagingPairing,
 } from "@/lib/db";
@@ -10,6 +10,7 @@ import { decryptSecretValue } from "@/lib/secrets";
 import {
   getLatestChannelRecipientFromRestoreJob,
   getRestoreInstanceIdentifier,
+  getWhatsAppStatus,
   getPairingReadiness,
   sanitizeProvisioningText,
   serializeMessagingPairing,
@@ -18,7 +19,7 @@ import {
 } from "@/lib/provisioning";
 import { getCurrentUserFromRequest } from "@/lib/session";
 
-const WHATSAPP_COMPLETION_CHECK_INTERVAL_MS = 10_000;
+const WHATSAPP_COMPLETION_CHECK_INTERVAL_MS = 5_000;
 const lastWhatsAppCompletionCheckAt = new Map<string, number>();
 const pluginInstallSpawned = new Set<string>();
 
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
 
   const restoreJob = getLatestRestoreJobByUserId(user.id);
   const channelConfig = getUserChannelConfigByUserId(user.id);
-  let pairing = getMessagingPairingByUserId(user.id);
+  let pairing = getMessagingPairingByUserIdAndChannel(user.id, channelConfig?.preferredChannel ?? "whatsapp");
   const now = Date.now();
 
   if (
@@ -51,77 +52,82 @@ export async function GET(request: Request) {
     pairing.restoreJobId === restoreJob.id &&
     pairing.channel === "whatsapp" &&
     pairing.status !== "completed" &&
-    (hasCompletedWhatsAppLink(pairing.qrOutput) || hasCompletedWhatsAppLink(pairing.instructionText))
-  ) {
-    pairing = upsertMessagingPairing({
-      userId: user.id,
-      restoreJobId: restoreJob.id,
-      channel: "whatsapp",
-      status: "completed",
-      instructionText: "WhatsApp is linked and ready for NewsClaw.",
-      errorMessage: null,
-      lastUpdatedAt: new Date().toISOString(),
-    });
-
-    const instance = getRestoreInstanceIdentifier(restoreJob);
-
-    if (instance && !pluginInstallSpawned.has(restoreJob.id)) {
-      pluginInstallSpawned.add(restoreJob.id);
-      spawnProvisioningWorker({
-        mode: "plugin-install",
-        restoreJobId: restoreJob.id,
-        userId: user.id,
-        instance,
-      });
-    }
-  }
-
-  if (
-    restoreJob &&
-    pairing &&
-    pairing.restoreJobId === restoreJob.id &&
-    pairing.channel === "whatsapp" &&
-    pairing.status === "qr_ready" &&
-    pairing.qrOutput.trim().length > 0 &&
     now - (lastWhatsAppCompletionCheckAt.get(user.id) ?? 0) >= WHATSAPP_COMPLETION_CHECK_INTERVAL_MS
   ) {
-    lastWhatsAppCompletionCheckAt.set(user.id, now);
+    const textHint =
+      hasCompletedWhatsAppLink(pairing.qrOutput) || hasCompletedWhatsAppLink(pairing.instructionText);
+    const hasQr = pairing.status === "qr_ready" && pairing.qrOutput.trim().length > 0;
 
-    try {
-      const sshPrivateKey = restoreJob.sshPrivateKeyEncrypted
-        ? decryptSecretValue(restoreJob.sshPrivateKeyEncrypted)
-        : undefined;
-      const whatsappRecipient = await getLatestChannelRecipientFromRestoreJob(restoreJob, "whatsapp", sshPrivateKey);
+    if (textHint || hasQr) {
+      lastWhatsAppCompletionCheckAt.set(user.id, now);
+      const instance = getRestoreInstanceIdentifier(restoreJob);
 
-      if (whatsappRecipient) {
-        pairing = upsertMessagingPairing({
-          userId: user.id,
-          restoreJobId: restoreJob.id,
-          channel: "whatsapp",
-          status: "completed",
-          instructionText: `WhatsApp is linked and ready for delivery to ${whatsappRecipient}.`,
-          errorMessage: null,
-          lastUpdatedAt: new Date().toISOString(),
-        });
-        lastWhatsAppCompletionCheckAt.delete(user.id);
+      try {
+        let whatsappConfirmed = false;
 
-        const instance = getRestoreInstanceIdentifier(restoreJob);
+        if (instance) {
+          try {
+            const status = await getWhatsAppStatus(instance);
+            whatsappConfirmed = status === "connected";
 
-        if (instance && !pluginInstallSpawned.has(restoreJob.id)) {
-          pluginInstallSpawned.add(restoreJob.id);
-          spawnProvisioningWorker({
-            mode: "plugin-install",
-            restoreJobId: restoreJob.id,
-            userId: user.id,
-            instance,
-          });
+            // If gateway explicitly says QR not scanned yet, skip completion.
+            if (status === "pending") {
+              lastWhatsAppCompletionCheckAt.set(user.id, now);
+            }
+          } catch {
+            // clawmacdo whatsapp-status may fail (e.g. gateway token not supported).
+            // Fall back to text-hint / SSH detection.
+            whatsappConfirmed = textHint;
+          }
+        } else {
+          whatsappConfirmed = textHint;
         }
+
+        if (whatsappConfirmed) {
+          let deliveryNote = "WhatsApp is linked and ready for NewsClaw.";
+
+          if (hasQr) {
+            try {
+              const sshPrivateKey = restoreJob.sshPrivateKeyEncrypted
+                ? decryptSecretValue(restoreJob.sshPrivateKeyEncrypted)
+                : undefined;
+              const recipient = await getLatestChannelRecipientFromRestoreJob(restoreJob, "whatsapp", sshPrivateKey);
+
+              if (recipient) {
+                deliveryNote = `WhatsApp is linked and ready for delivery to ${recipient}.`;
+              }
+            } catch {
+              // Non-fatal: use the generic message.
+            }
+          }
+
+          pairing = upsertMessagingPairing({
+            userId: user.id,
+            restoreJobId: restoreJob.id,
+            channel: "whatsapp",
+            status: "completed",
+            instructionText: deliveryNote,
+            errorMessage: null,
+            lastUpdatedAt: new Date().toISOString(),
+          });
+          lastWhatsAppCompletionCheckAt.delete(user.id);
+
+          if (instance && !pluginInstallSpawned.has(restoreJob.id)) {
+            pluginInstallSpawned.add(restoreJob.id);
+            spawnProvisioningWorker({
+              mode: "plugin-install",
+              restoreJobId: restoreJob.id,
+              userId: user.id,
+              instance,
+            });
+          }
+        }
+      } catch (error) {
+        console.error(
+          "[pairing] WhatsApp status check failed:",
+          error instanceof Error ? sanitizeProvisioningText(error.message) : error,
+        );
       }
-    } catch (error) {
-      console.error(
-        "[pairing] Failed to verify WhatsApp completion:",
-        error instanceof Error ? sanitizeProvisioningText(error.message) : error,
-      );
     }
   }
 
@@ -164,7 +170,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No deployment identifier is available for pairing." }, { status: 400 });
   }
 
-  const pairing = getMessagingPairingByUserId(user.id);
+  const pairing = getMessagingPairingByUserIdAndChannel(user.id, channelConfig.preferredChannel);
 
   const canReuseExistingPairing = Boolean(
     pairing &&
@@ -219,5 +225,5 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ pairing: serializeMessagingPairing(getMessagingPairingByUserId(user.id)) });
+  return NextResponse.json({ pairing: serializeMessagingPairing(getMessagingPairingByUserIdAndChannel(user.id, channelConfig.preferredChannel)) });
 }

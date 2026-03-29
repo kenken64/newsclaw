@@ -6,6 +6,7 @@ import {
   getOpenClawAgentByUserId,
   getTelegramConfigsWithCompletedPairing,
   getUserChannelConfigByUserId,
+  isWhatsAppNumberPairedByOtherUser,
   upsertOpenClawAgent,
   upsertUserChannelConfig,
 } from "@/lib/db";
@@ -65,6 +66,22 @@ export async function POST(request: Request) {
 
     if (body.preferredChannel === "whatsapp" && !body.whatsAppPhoneNumber) {
       return NextResponse.json({ error: "WhatsApp phone number is required." }, { status: 400 });
+    }
+
+    if (body.preferredChannel === "whatsapp" && body.whatsAppPhoneNumber) {
+      if (!/^\+65[89]\d{7}$/.test(body.whatsAppPhoneNumber)) {
+        return NextResponse.json(
+          { error: "Enter a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9)." },
+          { status: 400 },
+        );
+      }
+
+      if (isWhatsAppNumberPairedByOtherUser(body.whatsAppPhoneNumber, user.id)) {
+        return NextResponse.json(
+          { error: "This WhatsApp number is already paired with another instance. Use a different number." },
+          { status: 400 },
+        );
+      }
     }
 
     if (

@@ -55,6 +55,7 @@ function sanitizePairingOutput(value) {
     .filter((line) => !/^Setting up Telegram\b/iu.test(line))
     .filter((line) => !/^Restarting gateway\b/iu.test(line))
     .filter((line) => !/^Config warnings:/iu.test(line))
+    .filter((line) => !/Config warnings:.*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
     .filter((line) => !/^-\s*plugins\.entries\.\w+:\s*plugin not found/iu.test(line))
     .join("\n")
     .trim();
@@ -414,17 +415,16 @@ function updateRestoreJob(jobId, input) {
 }
 
 function upsertMessagingPairing(input) {
-  const current = db.prepare("SELECT * FROM messaging_pairings WHERE user_id = ?").get(input.user_id);
+  const current = db.prepare("SELECT * FROM messaging_pairings WHERE user_id = ? AND channel = ?").get(input.user_id, input.channel);
   const timestamp = now();
 
   if (current) {
     db.prepare(
       `UPDATE messaging_pairings
-       SET restore_job_id = ?, channel = ?, status = ?, qr_output = ?, instruction_text = ?, pairing_code = ?, error_message = ?, last_updated_at = ?, updated_at = ?
-       WHERE user_id = ?`,
+       SET restore_job_id = ?, status = ?, qr_output = ?, instruction_text = ?, pairing_code = ?, error_message = ?, last_updated_at = ?, updated_at = ?
+       WHERE user_id = ? AND channel = ?`,
     ).run(
       input.restore_job_id,
-      input.channel,
       input.status,
       input.qr_output ?? current.qr_output,
       input.instruction_text ?? current.instruction_text,
@@ -433,6 +433,7 @@ function upsertMessagingPairing(input) {
       input.last_updated_at === undefined ? current.last_updated_at : input.last_updated_at,
       timestamp,
       input.user_id,
+      input.channel,
     );
     return;
   }

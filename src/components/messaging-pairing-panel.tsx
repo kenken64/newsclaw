@@ -245,6 +245,12 @@ export function MessagingPairingPanel({ preferredChannel, initialPairing, userEm
                   <pre className="mt-3 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">{pairing.qrOutput}</pre>
                 </details>
               ) : null}
+              {hasRenderedQr && !completed ? (
+                <div className="mt-4 flex items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                  <LoaderCircle className="size-4 animate-spin shrink-0" />
+                  Waiting for WhatsApp to connect. Scan the QR code and it will be detected automatically.
+                </div>
+              ) : null}
               <Button onClick={refreshWhatsAppQr} disabled={busy} className="mt-5 rounded-2xl bg-[color:var(--brand-ink)] text-white hover:bg-[color:var(--brand-ink-strong)]">
                 {busy ? <LoaderCircle className="animate-spin" /> : <QrCode />}
                 Refresh QR code

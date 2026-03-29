@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   Clock3,
   LoaderCircle,
+  MessageCircle,
+  Phone,
   Trash2,
   RefreshCcw,
   ServerCrash,
@@ -46,6 +48,7 @@ type Props = {
   initialDailyDigestSchedules: DailyDigestSchedule[];
   initialPreferredChannel: "whatsapp" | "telegram";
   initialDeliveryTarget: string;
+  pairedChannels: Array<"whatsapp" | "telegram">;
 };
 
 type DailyDigestSchedule = {
@@ -90,9 +93,13 @@ export function CategoryDashboard({
   initialDailyDigestSchedules,
   initialPreferredChannel,
   initialDeliveryTarget,
+  pairedChannels,
 }: Props) {
   const [digestTime, setDigestTime] = useState("08:00");
-  const [digestRecipient, setDigestRecipient] = useState(initialDeliveryTarget);
+  const [digestChannel, setDigestChannel] = useState<"whatsapp" | "telegram">(initialPreferredChannel);
+  const [digestRecipient, setDigestRecipient] = useState(
+    initialPreferredChannel === "whatsapp" ? initialDeliveryTarget.replace(/^\+65/, "") : initialDeliveryTarget
+  );
   const [digestPrompt, setDigestPrompt] = useState("");
   const [digestBusy, setDigestBusy] = useState(false);
   const [digestSchedules, setDigestSchedules] = useState<DailyDigestSchedule[]>(initialDailyDigestSchedules);
@@ -111,6 +118,14 @@ export function CategoryDashboard({
   const [digestSuccess, setDigestSuccess] = useState<string | null>(null);
   const [destroyBusy, setDestroyBusy] = useState(false);
   const [destroyConfirming, setDestroyConfirming] = useState(false);
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [repairWhatsAppOpen, setRepairWhatsAppOpen] = useState(false);
+  const [repairPhoneNumber, setRepairPhoneNumber] = useState(
+    initialPreferredChannel === "whatsapp" ? initialDeliveryTarget.replace(/^\+65/, "") : ""
+  );
+  const [telegramPairOpen, setTelegramPairOpen] = useState(false);
+  const [newBotToken, setNewBotToken] = useState("");
+  const [telegramPairBusy, setTelegramPairBusy] = useState(false);
   const telegramChatIdStorageKey = `newsclaw.telegramChatId:${userId}`;
   const router = useRouter();
 
@@ -136,12 +151,70 @@ export function CategoryDashboard({
     }
   }
 
-  const deliveryTargetLabel = initialPreferredChannel === "telegram"
+  async function repairWhatsApp() {
+    if (!/^[89]\d{7}$/.test(repairPhoneNumber.trim())) {
+      setDigestError("Enter a valid Singapore mobile number (8 digits starting with 8 or 9).");
+      return;
+    }
+
+    setRepairBusy(true);
+    setDigestError(null);
+
+    try {
+      const response = await fetch("/api/provision/pairing/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: "whatsapp", whatsAppPhoneNumber: `+65${repairPhoneNumber.trim()}` }),
+      });
+      const payload = (await response.json()) as { error?: string; nextPath?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to reset WhatsApp pairing.");
+      }
+
+      setRepairWhatsAppOpen(false);
+      router.push(payload.nextPath ?? "/pair-channel");
+      router.refresh();
+    } catch (caughtError) {
+      setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to reset WhatsApp pairing.");
+    } finally {
+      setRepairBusy(false);
+    }
+  }
+
+  async function pairTelegram() {
+    setTelegramPairBusy(true);
+    setDigestError(null);
+
+    try {
+      const response = await fetch("/api/provision/pairing/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: "telegram", telegramBotToken: newBotToken }),
+      });
+      const payload = (await response.json()) as { error?: string; nextPath?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to reset Telegram pairing.");
+      }
+
+      setTelegramPairOpen(false);
+      setNewBotToken("");
+      router.push(payload.nextPath ?? "/pair-channel");
+      router.refresh();
+    } catch (caughtError) {
+      setDigestError(caughtError instanceof Error ? caughtError.message : "Unable to reset Telegram pairing.");
+    } finally {
+      setTelegramPairBusy(false);
+    }
+  }
+
+  const deliveryTargetLabel = digestChannel === "telegram"
     ? "Telegram chat ID"
-    : "WhatsApp number";
-  const deliveryTargetPlaceholder = initialPreferredChannel === "telegram"
+    : "WhatsApp number (Singapore)";
+  const deliveryTargetPlaceholder = digestChannel === "telegram"
     ? "Numeric Telegram chat ID"
-    : "+6591234567";
+    : "91234567";
 
   async function resolveTelegramChatId() {
     if (typeof window !== "undefined") {
@@ -254,16 +327,25 @@ export function CategoryDashboard({
     setDigestSuccess(null);
 
     try {
-      const recipient = initialPreferredChannel === "telegram"
-        ? await resolveTelegramChatId()
-        : digestRecipient;
+      let recipient: string;
+
+      if (digestChannel === "telegram") {
+        recipient = await resolveTelegramChatId();
+      } else {
+        if (!/^[89]\d{7}$/.test(digestRecipient.trim())) {
+          setDigestError("Enter a valid Singapore mobile number (8 digits starting with 8 or 9).");
+          setDigestBusy(false);
+          return;
+        }
+        recipient = `+65${digestRecipient.trim()}`;
+      }
 
       const response = await fetch("/api/daily-digest", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ time: digestTime, recipient, prompt: digestPrompt }),
+        body: JSON.stringify({ time: digestTime, channel: digestChannel, recipient, prompt: digestPrompt }),
       });
       const payload = (await response.json()) as {
         error?: string;
@@ -468,7 +550,22 @@ export function CategoryDashboard({
                       className="min-h-24 border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
                     />
                   </div>
-                  {initialPreferredChannel === "telegram" ? (
+                  {pairedChannels.length > 1 ? (
+                    <div className="grid gap-2">
+                      <Label htmlFor="daily-digest-channel" className="text-slate-700">Delivery channel</Label>
+                      <select
+                        id="daily-digest-channel"
+                        value={digestChannel}
+                        onChange={(event) => setDigestChannel(event.target.value as "whatsapp" | "telegram")}
+                        disabled={digestBusy}
+                        className="h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-950"
+                      >
+                        {pairedChannels.includes("whatsapp") ? <option value="whatsapp">WhatsApp</option> : null}
+                        {pairedChannels.includes("telegram") ? <option value="telegram">Telegram</option> : null}
+                      </select>
+                    </div>
+                  ) : null}
+                  {digestChannel === "telegram" ? (
                     <div className="grid gap-2">
                       <Label className="text-slate-700">Telegram chat ID</Label>
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
@@ -482,22 +579,30 @@ export function CategoryDashboard({
                   ) : (
                     <div className="grid gap-2">
                       <Label htmlFor="daily-digest-recipient" className="text-slate-700">{deliveryTargetLabel}</Label>
-                      <Input
-                        id="daily-digest-recipient"
-                        type="text"
-                        value={digestRecipient}
-                        onChange={(event) => setDigestRecipient(event.target.value)}
-                        disabled={digestBusy}
-                        placeholder={deliveryTargetPlaceholder}
-                        className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
-                      />
+                      <div className="flex">
+                        <span className="inline-flex items-center rounded-l-md border border-r-0 border-slate-200 bg-slate-100 px-3 text-sm text-slate-600">+65</span>
+                        <Input
+                          id="daily-digest-recipient"
+                          type="text"
+                          value={digestRecipient}
+                          onChange={(event) => {
+                            const value = event.target.value.replace(/\D/g, "").slice(0, 8);
+                            setDigestRecipient(value);
+                          }}
+                          disabled={digestBusy}
+                          placeholder={deliveryTargetPlaceholder}
+                          maxLength={8}
+                          inputMode="numeric"
+                          className="rounded-l-none border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
+                        />
+                      </div>
                     </div>
                   )}
                 </form>
                 <p className="text-xs text-slate-500">
-                  {initialPreferredChannel === "telegram"
+                  {digestChannel === "telegram"
                     ? "Telegram chat ID is loaded from local storage when available, otherwise fetched from OpenClaw before saving. Press Enter in the time field, or Cmd/Ctrl + Enter in the prompt field, to add this daily digest."
-                    : "Use an E.164 WhatsApp number such as +6591234567. Press Enter in the time field, or Cmd/Ctrl + Enter in the prompt field, to add this daily digest."}
+                    : "Singapore mobile number (8 digits starting with 8 or 9). Press Enter in the time field, or Cmd/Ctrl + Enter in the prompt field, to add this daily digest."}
                 </p>
               </div>
               <div className="grid gap-2">
@@ -628,6 +733,100 @@ export function CategoryDashboard({
               <Button variant="outline" className="h-11 rounded-2xl border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white" asChild>
                 <a href="/setup-agent?edit=1">Edit preferred topics</a>
               </Button>
+              <AlertDialog open={telegramPairOpen} onOpenChange={setTelegramPairOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-2xl border-sky-400/20 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20 hover:text-sky-100"
+                  >
+                    <MessageCircle className="size-4" />
+                    Pair Telegram
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-2xl border-slate-200 bg-white">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Pair Telegram bot</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Enter a new Telegram bot token to re-pair with a different bot. This will reset the current pairing and redirect you to the pairing flow.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="grid gap-2 py-2">
+                    <Label htmlFor="new-bot-token" className="text-sm text-slate-700">Bot token</Label>
+                    <Input
+                      id="new-bot-token"
+                      type="text"
+                      value={newBotToken}
+                      onChange={(event) => setNewBotToken(event.target.value)}
+                      disabled={telegramPairBusy}
+                      placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                      className="border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={telegramPairBusy} className="rounded-2xl">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => { e.preventDefault(); void pairTelegram(); }}
+                      disabled={telegramPairBusy || !newBotToken.trim()}
+                      className="rounded-2xl bg-sky-600 text-white hover:bg-sky-700"
+                    >
+                      {telegramPairBusy ? <LoaderCircle className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}
+                      Pair
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <AlertDialog open={repairWhatsAppOpen} onOpenChange={setRepairWhatsAppOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-11 rounded-2xl border-emerald-400/20 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
+                    disabled={repairBusy}
+                  >
+                    {repairBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Phone className="size-4" />}
+                    Repair WhatsApp
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-2xl border-slate-200 bg-white">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Repair WhatsApp pairing</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will reset the current WhatsApp pairing and redirect you to scan a new QR code. Use this if your WhatsApp connection has broken.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="grid gap-2 py-2">
+                    <Label htmlFor="repair-phone-number" className="text-sm text-slate-700">WhatsApp number (Singapore)</Label>
+                    <div className="flex">
+                      <span className="inline-flex items-center rounded-l-md border border-r-0 border-slate-200 bg-slate-100 px-3 text-sm text-slate-600">+65</span>
+                      <Input
+                        id="repair-phone-number"
+                        type="text"
+                        value={repairPhoneNumber}
+                        onChange={(event) => {
+                          const value = event.target.value.replace(/\D/g, "").slice(0, 8);
+                          setRepairPhoneNumber(value);
+                        }}
+                        disabled={repairBusy}
+                        placeholder="91234567"
+                        maxLength={8}
+                        inputMode="numeric"
+                        className="rounded-l-none border-slate-200 bg-slate-50 text-slate-950 placeholder:text-slate-400"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">Singapore mobile number (8 digits starting with 8 or 9).</p>
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={repairBusy} className="rounded-2xl">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => { e.preventDefault(); void repairWhatsApp(); }}
+                      disabled={repairBusy || !/^[89]\d{7}$/.test(repairPhoneNumber.trim())}
+                      className="rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      {repairBusy ? <LoaderCircle className="size-4 animate-spin" /> : <Phone className="size-4" />}
+                      Repair
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               <AlertDialog open={destroyConfirming} onOpenChange={setDestroyConfirming}>
                 <AlertDialogTrigger asChild>
                   <Button

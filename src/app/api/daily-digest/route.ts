@@ -23,6 +23,7 @@ import { getValidationErrorMessage } from "@/lib/validation";
 
 const requestSchema = z.object({
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/u, "Enter a valid daily time in HH:MM format."),
+  channel: z.enum(["whatsapp", "telegram"]).optional(),
   recipient: z.string().trim().max(80, "Keep the delivery target under 80 characters.").optional().default(""),
   prompt: z.string().trim().max(2000, "Keep the daily digest prompt under 2000 characters.").optional().default(""),
 });
@@ -39,7 +40,7 @@ const updateSchema = z.object({
 const SINGAPORE_TIMEZONE = "Asia/Singapore";
 const SINGAPORE_UTC_OFFSET_HOURS = 8;
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d+$/u;
-const WHATSAPP_PHONE_PATTERN = /^\+[1-9]\d{5,19}$/u;
+const WHATSAPP_PHONE_PATTERN = /^\+65[89]\d{7}$/u;
 const ANSI_ESCAPE_PATTERN = /\x1b\[[0-9;]*m/gu;
 const REMOTE_CRON_UNREACHABLE_PATTERN = /(?:SSH error: .*?(?:connection timed out|operation timed out|no route to host|network is unreachable|connection refused|could not resolve hostname)|TCP connect .*?(?:connection timed out|operation timed out)|i\/o timeout)/iu;
 
@@ -105,7 +106,7 @@ function resolveDeliveryTarget(
   }
 
   if (preferredChannel === "whatsapp" && !WHATSAPP_PHONE_PATTERN.test(deliveryTarget)) {
-    throw new Error("WhatsApp schedules require an E.164 phone number such as +6591234567.");
+    throw new Error("WhatsApp schedules require a valid Singapore mobile number (+65 followed by 8 digits starting with 8 or 9).");
   }
 
   return deliveryTarget;
@@ -351,7 +352,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Configure the delivery channel before scheduling a daily digest." }, { status: 400 });
     }
 
-    const deliveryChannel = channelConfig.preferredChannel;
+    const deliveryChannel = body.channel ?? channelConfig.preferredChannel;
     const requestedRecipient = deliveryChannel === "telegram" && !body.recipient.trim()
       ? await getTelegramChatIdFromInstance(context.instance)
       : body.recipient;
@@ -447,14 +448,18 @@ export async function DELETE(request: Request) {
         result.stderr || result.stdout || "Unable to remove the OpenClaw cron job. The local daily digest schedule was not deleted.",
       );
 
-      if (isRemoteCronCleanupRecoverableError(details)) {
+      const jobAlreadyGone = /no cron job named|not found on this instance/iu.test(details);
+
+      if (isRemoteCronCleanupRecoverableError(details) || jobAlreadyGone) {
         deleteDailyDigestSchedule(schedule.id);
 
         return NextResponse.json({
           success: true,
-          remoteRemoved: false,
+          remoteRemoved: jobAlreadyGone,
           removedJobName: schedule.jobName,
-          warning: `Daily digest removed locally, but NewsClaw could not reach ${context.instance} to remove the OpenClaw cron job. ${details}`,
+          warning: jobAlreadyGone
+            ? "Daily digest removed. The remote cron job was already gone."
+            : `Daily digest removed locally, but NewsClaw could not reach ${context.instance} to remove the OpenClaw cron job. ${details}`,
           schedules: serializeSchedules(user.id),
         });
       }

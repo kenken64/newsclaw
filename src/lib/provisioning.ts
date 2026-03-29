@@ -27,6 +27,8 @@ const PROVISIONING_NOISE_PATTERNS = [
   /^No available upgrade found\.?$/u,
   /^No newer package versions are available from the configured sources\.?$/u,
   /^[-\\/|]+$/u,
+  /Config warnings:.*plugins\.entries\.\w+:\s*plugin not found/u,
+  /^-\s*plugins\.entries\.\w+:\s*plugin not found/u,
 ];
 
 type WorkerPayload =
@@ -356,6 +358,38 @@ export async function getTelegramChatIdFromInstance(instance: string) {
   }
 
   return chatIdMatch[1];
+}
+
+export type WhatsAppConnectionStatus = "connected" | "pending" | "unreachable";
+
+export async function getWhatsAppStatus(instance: string): Promise<WhatsAppConnectionStatus> {
+  const result = await runClawmacdoCommand([
+    "whatsapp-status",
+    "--instance",
+    instance,
+  ]);
+
+  const output = sanitizeProvisioningText(result.stdout || result.stderr);
+
+  if (result.code !== 0) {
+    throw new Error(output || "Unable to check WhatsApp status on the instance.");
+  }
+
+  const lowered = output.toLowerCase();
+
+  if (lowered.includes("connected")) {
+    return "connected";
+  }
+
+  if (lowered.includes("pending")) {
+    return "pending";
+  }
+
+  if (lowered.includes("unreachable")) {
+    return "unreachable";
+  }
+
+  throw new Error(`Unexpected WhatsApp status response: ${output}`);
 }
 
 function shellEscape(value: string) {

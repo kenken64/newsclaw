@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   getLatestRestoreJobByUserId,
-  getMessagingPairingByUserId,
+  getMessagingPairingByUserIdAndChannel,
   getUserChannelConfigByUserId,
 } from "@/lib/db";
 import { spawnProvisioningWorker } from "@/lib/provisioning";
@@ -35,5 +35,5 @@ export async function POST(request: Request) {
     phoneNumber: channelConfig.whatsappPhoneNumber ?? "",
   });
 
-  return NextResponse.json({ pairing: getMessagingPairingByUserId(user.id) });
+  return NextResponse.json({ pairing: getMessagingPairingByUserIdAndChannel(user.id, "whatsapp") });
 }

@@ -4,7 +4,7 @@ import { MessagingPairingPanel } from "@/components/messaging-pairing-panel";
 import { Badge } from "@/components/ui/badge";
 import {
   getLatestRestoreJobByUserId,
-  getMessagingPairingByUserId,
+  getMessagingPairingByUserIdAndChannel,
   getOpenClawAgentByUserId,
   getUserChannelConfigByUserId,
 } from "@/lib/db";
@@ -30,7 +30,7 @@ export default async function PairChannelPage() {
     redirect("/setup-agent?edit=1");
   }
 
-  const pairing = getMessagingPairingByUserId(user.id);
+  const pairing = getMessagingPairingByUserIdAndChannel(user.id, channelConfig?.preferredChannel ?? "whatsapp");
 
   if (pairing?.status === "completed") {
     redirect("/dashboard");

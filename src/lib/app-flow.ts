@@ -2,7 +2,7 @@ import "server-only";
 
 import {
   getLatestRestoreJobByUserId,
-  getMessagingPairingByUserId,
+  getMessagingPairingsByUserId,
   getOpenClawAgentByUserId,
   getUserChannelConfigByUserId,
 } from "@/lib/db";
@@ -26,9 +26,9 @@ export function getPostAuthPath(userId: string) {
     return "/restore-instance";
   }
 
-  const pairing = getMessagingPairingByUserId(userId);
+  const pairings = getMessagingPairingsByUserId(userId);
 
-  if (!pairing || pairing.status !== "completed") {
+  if (!pairings.some(p => p.status === "completed")) {
     return "/pair-channel";
   }
 

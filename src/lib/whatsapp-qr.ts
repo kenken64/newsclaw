@@ -199,8 +199,68 @@ function parseUnicodeQrRows(text: string) {
   return null;
 }
 
+function isUniformRow(row: boolean[]) {
+  if (row.length === 0) return true;
+  const first = row[0];
+  return row.every((v) => v === first);
+}
+
+function isUniformColumn(rows: boolean[][], colIndex: number) {
+  if (rows.length === 0) return true;
+  const first = rows[0][colIndex];
+  return rows.every((row) => row[colIndex] === first);
+}
+
+function trimQrBorder(rows: boolean[][]) {
+  if (rows.length === 0) return rows;
+
+  let topTrim = 0;
+  while (topTrim < rows.length && isUniformRow(rows[topTrim])) {
+    topTrim += 1;
+  }
+
+  let bottomTrim = 0;
+  while (bottomTrim < rows.length - topTrim && isUniformRow(rows[rows.length - 1 - bottomTrim])) {
+    bottomTrim += 1;
+  }
+
+  let trimmed = rows.slice(topTrim, rows.length - bottomTrim);
+  if (trimmed.length === 0) return rows;
+
+  const width = trimmed[0].length;
+
+  let leftTrim = 0;
+  while (leftTrim < width && isUniformColumn(trimmed, leftTrim)) {
+    leftTrim += 1;
+  }
+
+  let rightTrim = 0;
+  while (rightTrim < width - leftTrim && isUniformColumn(trimmed, width - 1 - rightTrim)) {
+    rightTrim += 1;
+  }
+
+  if (leftTrim > 0 || rightTrim > 0) {
+    trimmed = trimmed.map((row) => row.slice(leftTrim, width - rightTrim));
+  }
+
+  return trimmed;
+}
+
+function autoInvertIfNeeded(rows: boolean[][]) {
+  // A valid QR code's top-left finder pattern starts with a 7-module dark border.
+  // If the top-left corner is light, the entire matrix is color-inverted.
+  if (rows.length >= 7 && rows[0].length >= 7 && !rows[0][0]) {
+    return rows.map((row) => row.map((v) => !v));
+  }
+
+  return rows;
+}
+
 export function parseQrTextToRows(text: string) {
-  return parseAnsiQrRows(text) ?? parseUnicodeQrRows(text);
+  const raw = parseAnsiQrRows(text) ?? parseUnicodeQrRows(text);
+  if (!raw) return null;
+  const trimmed = trimQrBorder(raw);
+  return trimmed.length >= 10 ? autoInvertIfNeeded(trimmed) : null;
 }
 
 export function drawQrRowsToCanvas(

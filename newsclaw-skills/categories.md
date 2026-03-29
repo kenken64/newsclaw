@@ -1,6 +1,6 @@
-# OpenClaw Category Guide
+# OpenClaw NewsClaw Category Guide
 
-This file maps the saved preferred topics to the available coverage categories for Kenneth Signal Desk.
+This reference maps the saved preferred topics to the available coverage categories for Kenneth Signal Desk.
 
 Region focus:
 Asia, with emphasis on Southeast Asia
@@ -13,86 +13,109 @@ Preferred topics:
 - M&A
 - HR
 
-## Technology (technology)
+## Related coverage categories
 
+### Technology
 AI, product launches, developer ecosystems, and platform changes.
 
-How it connects to preferred topics:
-- AI regulation often appears through product policy changes, model releases, and platform compliance updates.
-- Product launches are the core technology signal.
-- Enterprise security often intersects with cloud, identity, and software platform changes.
+How it relates to the preferred topics:
+- Best fit for AI regulation when the story centers on product or platform changes.
+- Best fit for product launches across consumer, SaaS, cloud, and developer tools.
+- Useful for enterprise security when the story involves software vendors, cloud services, or product vulnerabilities.
 
 Targeted query ideas:
-- "Technology news Asia Southeast Asia latest"
-- "AI regulation Asia Southeast Asia technology policy"
-- "product launch Asia Southeast Asia enterprise software"
-- "enterprise security Asia Southeast Asia cloud security"
-- "AI product release Southeast Asia company announcement"
+- "Technology news Asia, with emphasis on Southeast Asia {MONTH} {YEAR}"
+- "AI regulation Asia, with emphasis on Southeast Asia Technology {MONTH} {YEAR}"
+- "product launches Asia, with emphasis on Southeast Asia Technology {MONTH} {YEAR}"
+- "enterprise security Asia, with emphasis on Southeast Asia Technology {MONTH} {YEAR}"
+- "developer platform launch Singapore {MONTH} {YEAR}"
 
-## World Affairs (world)
-
+### World Affairs
 Geopolitics, diplomacy, conflicts, and international policy.
 
-How it connects to preferred topics:
-- AI regulation can be shaped by cross-border standards and diplomatic coordination.
-- M&A and venture funding can be affected by sanctions, trade policy, and regional tensions.
-- HR can be impacted by migration rules and labor mobility.
+How it relates to the preferred topics:
+- Useful when AI regulation or enterprise security is shaped by cross-border policy or geopolitical tension.
+- Helpful for M&A or venture funding when sanctions, export controls, or international relations affect deals.
+- Relevant for regional government moves that influence labor, data, and digital policy.
 
 Targeted query ideas:
-- "World Affairs Asia Southeast Asia policy update"
-- "cross-border tech regulation Southeast Asia"
-- "trade restrictions Asia technology companies"
-- "labor mobility Southeast Asia HR policy"
-- "geopolitical risk Southeast Asia business"
+- "World Affairs news Asia, with emphasis on Southeast Asia {MONTH} {YEAR}"
+- "AI regulation Asia, with emphasis on Southeast Asia World Affairs {MONTH} {YEAR}"
+- "M&A Asia, with emphasis on Southeast Asia World Affairs {MONTH} {YEAR}"
+- "venture funding Asia, with emphasis on Southeast Asia geopolitics {MONTH} {YEAR}"
+- "Singapore Malaysia policy coordination digital economy {MONTH} {YEAR}"
 
-## Business (business)
-
+### Business
 Markets, executive shifts, company strategy, and earnings moves.
 
-How it connects to preferred topics:
-- Venture funding and M&A are core business signals.
-- Product launches often reflect strategy shifts and revenue priorities.
-- HR changes can indicate restructuring, hiring freezes, or growth plans.
+How it relates to the preferred topics:
+- Best fit for venture funding, M&A, and HR leadership changes.
+- Useful for product launches when they affect revenue, strategy, or market share.
+- Strong category for enterprise security incidents that have financial or reputational impact.
 
 Targeted query ideas:
-- "Business news Asia Southeast Asia startup funding"
-- "M&A Asia Southeast Asia deal announcement"
-- "executive change Southeast Asia tech company"
-- "earnings guidance Asia enterprise security vendor"
-- "restructuring hiring freeze Southeast Asia company"
+- "Business news Asia, with emphasis on Southeast Asia {MONTH} {YEAR}"
+- "venture funding Asia, with emphasis on Southeast Asia Business {MONTH} {YEAR}"
+- "M&A Asia, with emphasis on Southeast Asia Business {MONTH} {YEAR}"
+- "HR Asia, with emphasis on Southeast Asia Business {MONTH} {YEAR}"
+- "executive appointment Singapore startup {MONTH} {YEAR}"
 
-## Policy (policy)
-
+### Policy
 Regulation, legislation, public sector decisions, and compliance.
 
-How it connects to preferred topics:
-- AI regulation is the strongest policy overlap.
-- Enterprise security often appears in cyber rules, data protection, and critical infrastructure policy.
-- HR can be affected by employment law, visas, and workplace regulation.
+How it relates to the preferred topics:
+- Primary category for AI regulation and compliance monitoring.
+- Useful for enterprise security when the story involves data protection, cyber rules, or incident disclosure.
+- Important for HR when labor rules, visas, or workplace policy change.
 
 Targeted query ideas:
-- "Policy news Asia Southeast Asia regulation update"
-- "AI regulation Southeast Asia draft law"
-- "data protection Southeast Asia enterprise security"
-- "cybersecurity regulation Asia compliance"
-- "employment law Southeast Asia HR"
+- "Policy news Asia, with emphasis on Southeast Asia {MONTH} {YEAR}"
+- "AI regulation Asia, with emphasis on Southeast Asia Policy {MONTH} {YEAR}"
+- "enterprise security Asia, with emphasis on Southeast Asia Policy {MONTH} {YEAR}"
+- "HR Asia, with emphasis on Southeast Asia Policy {MONTH} {YEAR}"
+- "data protection regulation Singapore Indonesia {MONTH} {YEAR}"
 
 ## Preferred-topic-specific search suggestions
 
-Use these when you want direct monitoring of the saved topics across the region:
+### AI regulation
+- "AI regulation Asia, with emphasis on Southeast Asia breaking developments {MONTH} {YEAR}"
+- "AI regulation Singapore Malaysia Indonesia policy {MONTH} {YEAR}"
+- "AI governance framework Southeast Asia {MONTH} {YEAR}"
+- "generative AI regulation Asia enterprise impact {MONTH} {YEAR}"
 
-- AI regulation: "AI regulation Asia Southeast Asia breaking news"; "AI governance Southeast Asia draft rules"; "AI compliance Asia policy"
-- Product launches: "product launch Asia Southeast Asia announcement"; "new product release Southeast Asia enterprise"; "platform launch Asia technology"
-- Enterprise security: "enterprise security Asia Southeast Asia incident"; "breach Southeast Asia company"; "cloud security Asia alert"
-- Venture funding: "venture funding Southeast Asia startup round"; "Series A Asia startup"; "VC funding Southeast Asia enterprise software"
-- M&A: "M&A Asia Southeast Asia acquisition"; "deal announcement Southeast Asia tech"; "strategic acquisition Asia business"
-- HR: "HR Asia Southeast Asia layoffs"; "hiring freeze Southeast Asia company"; "executive appointment Asia technology"
+### Product launches
+- "product launches Asia, with emphasis on Southeast Asia breaking developments {MONTH} {YEAR}"
+- "product launch Singapore enterprise software {MONTH} {YEAR}"
+- "new platform launch Southeast Asia {MONTH} {YEAR}"
+- "enterprise product launch APAC {MONTH} {YEAR}"
 
-## Monitoring tips for OpenClaw
+### Enterprise security
+- "enterprise security Asia, with emphasis on Southeast Asia breaking developments {MONTH} {YEAR}"
+- "cybersecurity incident Singapore enterprise {MONTH} {YEAR}"
+- "data breach Southeast Asia company {MONTH} {YEAR}"
+- "cloud security advisory Asia {MONTH} {YEAR}"
 
-- Use the preferred topics as the first filter, then add category terms only if needed.
-- Prioritize stories with direct business impact in Singapore, Indonesia, Malaysia, Thailand, Vietnam, and the Philippines.
-- For policy and AI regulation, check for draft rules, consultation papers, enforcement actions, and agency statements.
-- For venture funding and M&A, look for deal size, investor names, acquirer rationale, and regional expansion plans.
-- For HR, look for layoffs, senior hires, reorganizations, and remote-work or talent-policy changes.
-- For enterprise security, look for breach scope, affected systems, remediation steps, and customer impact.
+### Venture funding
+- "venture funding Asia, with emphasis on Southeast Asia breaking developments {MONTH} {YEAR}"
+- "startup funding Singapore Indonesia Malaysia {MONTH} {YEAR}"
+- "Series A Southeast Asia startup {MONTH} {YEAR}"
+- "AI startup funding Asia {MONTH} {YEAR}"
+
+### M&A
+- "M&A Asia, with emphasis on Southeast Asia breaking developments {MONTH} {YEAR}"
+- "acquisition Singapore startup {MONTH} {YEAR}"
+- "strategic investment Southeast Asia technology {MONTH} {YEAR}"
+- "cross-border acquisition Asia {MONTH} {YEAR}"
+
+### HR
+- "HR Asia, with emphasis on Southeast Asia breaking developments {MONTH} {YEAR}"
+- "layoffs Singapore technology company {MONTH} {YEAR}"
+- "hiring freeze Southeast Asia startup {MONTH} {YEAR}"
+- "executive appointment Asia enterprise {MONTH} {YEAR}"
+
+## Monitoring tips
+
+- Use country names to narrow regional scans: Singapore, Indonesia, Malaysia, Thailand, Vietnam, Philippines.
+- Combine topic plus category when you want a more structured sweep, especially for policy and business impact.
+- Add "latest", "breaking", "analysis", or "filing" to separate news from background coverage.
+- For recurring monitoring, rotate between broad regional queries and country-specific queries to catch both headlines and local developments.

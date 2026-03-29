@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import {
   getLatestRestoreJobByUserId,
-  getMessagingPairingByUserId,
+  getMessagingPairingByUserIdAndChannel,
   getUserChannelConfigByUserId,
   upsertMessagingPairing,
 } from "@/lib/db";
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error: restartMessage,
-            pairing: serializeMessagingPairing(getMessagingPairingByUserId(user.id)),
+            pairing: serializeMessagingPairing(getMessagingPairingByUserIdAndChannel(user.id, "telegram")),
           },
           { status: 409 },
         );
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
       instance,
     });
 
-    return NextResponse.json({ pairing: serializeMessagingPairing(getMessagingPairingByUserId(user.id)) });
+    return NextResponse.json({ pairing: serializeMessagingPairing(getMessagingPairingByUserIdAndChannel(user.id, "telegram")) });
   } catch (caughtError) {
     const message = getValidationErrorMessage(caughtError, "Unable to verify the Telegram pairing code.");
     return NextResponse.json({ error: message }, { status: 400 });
